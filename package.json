@@ -6,7 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint . --ext .ts,.js",
     "lint:fix": "eslint . --ext .ts,.js --fix",
-    "format": "prettier --write ."  
+    "format": "prettier --write ."
   },
   "repository": {
     "type": "git",
@@ -26,6 +26,7 @@
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.1",
     "prettier": "^3.6.2",
+    "prisma": "^6.11.1",
     "typescript": "^5.8.3"
   }
 }
