@@ -28,5 +28,8 @@
     "prettier": "^3.6.2",
     "prisma": "^6.11.1",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.11.1"
   }
 }
