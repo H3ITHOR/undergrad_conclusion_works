@@ -24,4 +24,5 @@ model data {
   evaluation_panel   String
   local              String?
   key_words          String?
+  semester           String
 }

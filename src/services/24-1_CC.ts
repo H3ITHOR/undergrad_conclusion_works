@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer";
+import { ScrapedData } from "src/types/scraping.types";
 
 (async () => {
   const browser = await puppeteer.launch({});
@@ -62,8 +63,6 @@ import puppeteer from "puppeteer";
       )
   );
 
-  const raw = elementsArray;
-
   const titulo = newRaw2.map((v) => v[0][1]);
   const tg = newRaw2.map((v) => v[1][1]);
   const propostaInicial = newRaw2.map((v) => v[2][1]);
@@ -75,6 +74,37 @@ import puppeteer from "puppeteer";
   const resumoDaProposta = newRaw2.map((v) => v[8][1]);
   const apresentacao = newRaw2.map((v) => v[9][1]);
   const banca = newRaw2.map((v) => v[10][1]);
+  const semestre = "2024-1";
+
+  const dia = apresentacao.map((v) =>
+    v.slice(v.indexOf("dia: ") + 5, v.indexOf(","))
+  );
+
+  const hora = apresentacao.map((v) => {
+    const match = v.match(/hora: ([^,]+)/);
+    return match ? match[1].trim() : "";
+  });
+
+  const local = apresentacao.map((v) => v.slice(v.indexOf("local: ") + 7));
+
+  const scrapedDataArray: ScrapedData[] = elementsArray.map(
+    (rawText, index) => ({
+      title: titulo[index],
+      tg: tg[index],
+      Initial_proposal: propostaInicial[index],
+      Author: autor[index],
+      Course: curso[index],
+      Advisor: orientador[index],
+      Co_Advisor: coorientador[index],
+      Possible_appraiser: possiveisAvaliadores[index],
+      Proposal_abstract: resumoDaProposta[index],
+      evaluation_panel: banca[index],
+      semester: semestre,
+      day: dia[index],
+      hour: hora[index],
+      local: local[index],
+    })
+  );
 
   await browser.close();
 })();

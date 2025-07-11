@@ -1,5 +1,4 @@
 export interface ScrapedData {
-  raw: string;
   title: string;
   tg?: string;
   Initial_proposal: string;
@@ -9,10 +8,13 @@ export interface ScrapedData {
   Co_Advisor?: string;
   Possible_appraiser?: string;
   Proposal_abstract: string;
-  date: string;
-  evaluation_panel: string;
+  date?: string;
+  day?: string;
+  hour?: string;
   local?: string;
+  evaluation_panel: string;
   key_words?: string;
+  semester: string;
 }
 
 export interface ScrapingOptions {
