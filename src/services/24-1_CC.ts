@@ -1,10 +1,7 @@
 import puppeteer from "puppeteer";
 
 (async () => {
-  const browser = await puppeteer.launch({
-    // headless: false,
-    // devtools: true,
-  });
+  const browser = await puppeteer.launch({});
   const page = await browser.newPage();
 
   await page.goto("https://cin.ufpe.br/~tg/");
@@ -30,8 +27,8 @@ import puppeteer from "puppeteer";
     const ol = document.querySelector("body > div > ol");
 
     const listItems = Array.from(ol.querySelectorAll("li"));
-    console.log(listItems.map((el) => el.innerHTML));
-    return listItems.map((el) => el.textContent);
+    console.log(listItems.map((el) => el.innerText));
+    return listItems.map((el) => el.textContent.replace(/\n/g, " ").trim());
   });
 
   const HTMLelementsArray = await page.evaluate(() => {
@@ -40,43 +37,44 @@ import puppeteer from "puppeteer";
     const listItems = Array.from(ol.querySelectorAll("li"));
     return listItems.map((el) => el.innerHTML);
   });
-  // just to take as reference
-  //   export interface ScrapedData {
-  //   raw: string;
-  //   title: string;
-  //   tg?: string;
-  //   Initial_proposal: string;
-  //   Author: string;
-  //   Course: string;
-  //   Advisor: string;
-  //   Co_Advisor?: string;
-  //   Possible_appraiser?: string;
-  //   Proposal_abstract: string;
-  //   date: string;
-  //   evaluation_panel: string;
-  //   local?: string;
-  //   key_words?: string;
-  // }
-  const raw = elementsArray;
-  const HTMLraw = HTMLelementsArray;
-  const title = raw.map((el) =>
-    el.slice(el.indexOf("Título:") + 7, el.indexOf("\n      TG: ")).trim()
+
+  const newRaw2 = HTMLelementsArray.map((v) =>
+    v
+      .replace(/Resumo da Proposta:<\/b>\n/g, "Resumo da Proposta:</b>")
+      .replace(/\n/g, " ")
+      .trim()
+      .split("<br><b>")
+      .map((v1) =>
+        v1
+          .trim()
+          .replaceAll("<b>", "")
+          .replaceAll("<br>", "")
+          .split("</b>")
+          .map((v1) => {
+            if (v1.trim().startsWith("<a"))
+              return `https://cin.ufpe.br/~tg/2024-1/${(
+                v1.match(/href="([^"]*)"/)?.[1] || ""
+              )
+                .replaceAll('"', "")
+                .replace("href=", "")}`;
+            return v1.trim();
+          })
+      )
   );
-  const tg = HTMLraw.map((el) => {
-    const hrefStart = el.indexOf('href="');
-    const hrefEnd = el.indexOf('"', hrefStart + 6);
 
-    if (hrefStart !== -1 && hrefEnd !== -1) {
-      const relativePath = el.slice(hrefStart + 6, hrefEnd);
-      return `https://www.cin.ufpe.br/~tg/2024-1/${relativePath}`;
-    }
+  const raw = elementsArray;
 
-    return null;
-  });
-
-  // console.log(elementsArray);
-  console.log(title);
-  console.log(tg);
+  const titulo = newRaw2.map((v) => v[0][1]);
+  const tg = newRaw2.map((v) => v[1][1]);
+  const propostaInicial = newRaw2.map((v) => v[2][1]);
+  const autor = newRaw2.map((v) => v[3][1]);
+  const curso = newRaw2.map((v) => v[4][1]);
+  const orientador = newRaw2.map((v) => v[5][1]);
+  const coorientador = newRaw2.map((v) => v[6][1]);
+  const possiveisAvaliadores = newRaw2.map((v) => v[7][1]);
+  const resumoDaProposta = newRaw2.map((v) => v[8][1]);
+  const apresentacao = newRaw2.map((v) => v[9][1]);
+  const banca = newRaw2.map((v) => v[10][1]);
 
   await browser.close();
 })();
