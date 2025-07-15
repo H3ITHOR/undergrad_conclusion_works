@@ -11,17 +11,16 @@ model data {
   id                 Int     @id @default(autoincrement())
   title              String
   tg                 String?
-  initial_proposal   String
+  initial_proposal   String?
   author             String
   course             String
-  advisor            String
+  advisor            String?
   co_Advisor         String?
   possible_appraiser String?
-  proposal_abstract  String
-  year               String
+  proposal_abstract  String?
   day                String?
   hour               String?
-  evaluation_panel   String
+  evaluation_panel   String?
   local              String?
   key_words          String?
   semester           String

@@ -21,6 +21,20 @@ export class DataRepository {
     });
   }
 
+  async deleteByField(field: string, value: string): Promise<any> {
+    return await this.prisma.data.deleteMany({
+      where: {
+        [field]: value,
+      },
+    });
+  }
+
+  async deleteByMultipleFields(conditions: any): Promise<any> {
+    return await this.prisma.data.deleteMany({
+      where: conditions,
+    });
+  }
+
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();
   }

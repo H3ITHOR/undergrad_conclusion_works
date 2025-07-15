@@ -1,18 +1,17 @@
 export interface ScrapedData {
   title: string;
   tg?: string;
-  initial_proposal: string;
+  initial_proposal?: string;
   author: string;
   course: string;
-  advisor: string;
+  advisor?: string;
   co_Advisor?: string;
   possible_appraiser?: string;
-  proposal_abstract: string;
-  year: string;
+  proposal_abstract?: string;
   day?: string;
   hour?: string;
   local?: string;
-  evaluation_panel: string;
+  evaluation_panel?: string;
   key_words?: string;
   semester: string;
 }
