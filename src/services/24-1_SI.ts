@@ -1,11 +1,9 @@
 import puppeteer from "puppeteer";
-import { ScrapedData } from "src/types/scraping.types";
 import { DataRepository } from "../repositories/scrapingRepository";
+import { ScrapedData } from "../types/scraping.types";
 
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: false,
-  });
+  const browser = await puppeteer.launch({});
   const page = await browser.newPage();
 
   await page.goto("https://cin.ufpe.br/~tg/");
@@ -28,23 +26,23 @@ import { DataRepository } from "../repositories/scrapingRepository";
   await page.click(link);
 
   const bigString = await page.evaluate(() => {
-    const body = document.querySelector("body");
-
-    const body2 = document.body.innerText;
+    const body2 = document.body.innerHTML;
+    console.log("body2: " + body2);
     const SI = body2.slice(body2.indexOf("rtbvvpt") + 15).split("\n");
+    console.log("SI: " + SI);
     const raws: string[] = [];
 
     for (let i = 0; i < SI.length; i++) {
-      if (SI[i].startsWith("Título:")) {
+      if (SI[i].includes("Título:")) {
         let raw = [SI[i]];
         i++;
 
-        while (i < SI.length && !SI[i].startsWith("Banca:")) {
+        while (i < SI.length && !SI[i].includes("<b>Banca:")) {
           raw.push(SI[i]);
           i++;
         }
 
-        if (i < SI.length && SI[i].startsWith("Banca:")) {
+        if (i < SI.length && SI[i].includes("<b>Banca:")) {
           raw.push(SI[i]);
         }
 
@@ -86,9 +84,9 @@ import { DataRepository } from "../repositories/scrapingRepository";
     return listItems.map((el) => el.innerHTML);
   });
 
-  const newRaw2 = HTMLelementsArray.map((v) =>
+  const newRaw2 = bigString.map((v) =>
     v
-      .replace(/Resumo da Proposta:<\/b>\n/g, "Resumo da Proposta:</b>")
+      // .replace(/Resumo da Proposta:<\/b>\n/g, "Resumo da Proposta:</b>")
       .replace(/\n/g, " ")
       .trim()
       .split("<br><b>")
@@ -112,63 +110,68 @@ import { DataRepository } from "../repositories/scrapingRepository";
   );
 
   const titulo = newRaw2.map((v) => v[0][1]);
-  const tg = newRaw2.map((v) => v[1][1]);
-  const propostaInicial = newRaw2.map((v) => v[2][1]);
-  const autor = newRaw2.map((v) => v[3][1]);
-  const curso = newRaw2.map((v) => v[4][1]);
-  const orientador = newRaw2.map((v) => v[5][1]);
-  const coorientador = newRaw2.map((v) => v[6][1]);
-  const possiveisAvaliadores = newRaw2.map((v) => v[7][1]);
-  const resumoDaProposta = newRaw2.map((v) => v[8][1]);
-  const apresentacao = newRaw2.map((v) => v[9][1]);
-  const banca = newRaw2.map((v) => v[10][1]);
+  // const tg = newRaw2.map((v) => v[1][1]);
+  // const propostaInicial = newRaw2.map((v) => v[2][1]);
+  const autor = newRaw2.map((v) => v[1][1]);
+  const curso = newRaw2.map((v) => v[2][1]);
+  const orientador = newRaw2.map((v) => {
+    if (v[3][1] === "???") {
+      return null;
+    }
+    return v[3][1];
+  });
+  // const coorientador = newRaw2.map((v) => v[6][1]);
+  // const possiveisAvaliadores = newRaw2.map((v) => v[7][1]);
+  // const resumoDaProposta = newRaw2.map((v) => v[8][1]);
+  const apresentacao = newRaw2.map((v) => {
+    if (v[4][1] === "Indefinida") {
+      return null;
+    }
+    return v[4][1];
+  });
+  const banca = newRaw2.map((v) => {
+    if (v[5][1] === "???") {
+      return null;
+    }
+    return v[5][1];
+  });
   const semestre = "2024-1";
 
-  const dia = apresentacao.map((v) => {
-    v = v.slice(v.indexOf("dia: ") + 5, v.indexOf(","));
-    if (v.trim() === "DD/MM/AAAA") {
-      return null;
-    }
-    return v;
-  });
+  // const dia = apresentacao.map((v) => {
+  //   v = v.slice(v.indexOf("dia: ") + 5, v.indexOf(","));
+  //   if (v.trim() === "DD/MM/AAAA") {
+  //     return null;
+  //   }
+  //   return v;
+  // });
 
-  const hora = apresentacao.map((v) => {
-    const re = /hora: ([^,]+)/;
-    const match = re.exec(v);
-    const newMatch = match[1].trim();
-    if (newMatch.trim() === "XXhYY") {
-      return null;
-    }
-    return newMatch || null;
-  });
+  // const hora = apresentacao.map((v) => {
+  //   const re = /hora: ([^,]+)/;
+  //   const match = re.exec(v);
+  //   const newMatch = match[1].trim();
+  //   if (newMatch.trim() === "XXhYY") {
+  //     return null;
+  //   }
+  //   return newMatch || null;
+  // });
 
-  const local = apresentacao.map((v) => {
-    v = v.slice(v.indexOf("local: ") + 7);
-    if (v.trim() === "LLLL") {
-      return null;
-    }
-    return v;
-  });
+  // const local = apresentacao.map((v) => {
+  //   v = v.slice(v.indexOf("local: ") + 7);
+  //   if (v.trim() === "LLLL") {
+  //     return null;
+  //   }
+  //   return v;
+  // });
 
-  const scrapedDataArray: ScrapedData[] = elementsArray.map(
-    (rawText, index) => ({
-      title: titulo[index],
-      tg: tg[index],
-      initial_proposal: propostaInicial[index],
-      author: autor[index],
-      course: curso[index],
-      advisor: orientador[index],
-      co_Advisor: coorientador[index],
-      possible_appraiser: possiveisAvaliadores[index],
-      proposal_abstract: resumoDaProposta[index],
-      evaluation_panel: banca[index],
-      semester: semestre,
-      day: dia[index],
-      hour: hora[index],
-      local: local[index],
-      year: "24-1",
-    })
-  );
+  const scrapedDataArray: ScrapedData[] = newRaw2.map((rawText, index) => ({
+    title: titulo[index],
+    author: autor[index],
+    course: curso[index],
+    advisor: orientador[index],
+    evaluation_panel: banca[index],
+    semester: semestre,
+    day: apresentacao[index],
+  }));
 
   try {
     const data = new DataRepository();
