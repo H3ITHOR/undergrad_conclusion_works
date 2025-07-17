@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer";
+import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
 const fs = require("fs").promises;
@@ -10,6 +11,69 @@ async function readFileExample(): Promise<string> {
   } catch (err) {
     console.error("Error reading file:", err);
   }
+}
+
+function mapFieldsFromRaw(newRaw2: any[]) {
+  const getFieldByName = (item: any[], fieldName: string) => {
+    // Procura pelo campo baseado no nome, não na posição
+    const fieldEntry = item.find((entry) =>
+      entry?.[0]?.toLowerCase().includes(fieldName.toLowerCase())
+    );
+    return fieldEntry?.[1] || null;
+  };
+
+  const getFieldWithValidation = (item: any[], expectedFields: string[]) => {
+    // Tenta encontrar o campo usando qualquer uma das variações possíveis
+    for (const fieldName of expectedFields) {
+      const result = getFieldByName(item, fieldName);
+      if (result) return result;
+    }
+    return null;
+  };
+
+  return {
+    titulo: newRaw2.map((v) => getFieldWithValidation(v, ["título", "title"])),
+
+    tg: newRaw2.map((v) => getFieldWithValidation(v, ["tg"])),
+
+    propostaInicial: newRaw2.map((v) =>
+      getFieldWithValidation(v, ["proposta inicial"])
+    ),
+
+    autor: newRaw2.map((v) => getFieldWithValidation(v, ["autor", "author"])),
+
+    curso: newRaw2.map((v) => getFieldWithValidation(v, ["curso", "course"])),
+
+    orientador: newRaw2.map((v) =>
+      getFieldWithValidation(v, ["orientador", "orientador(a)"])
+    ),
+
+    coorientador: newRaw2.map((v) =>
+      getFieldWithValidation(v, ["coorientador", "co-orientador"])
+    ),
+
+    possiveisAvaliadores: newRaw2.map((v) =>
+      getFieldWithValidation(v, ["possíveis avaliadores", "avaliadores"])
+    ),
+
+    resumoDaProposta: newRaw2.map((v) =>
+      getFieldWithValidation(v, ["resumo da proposta", "resumo"])
+    ),
+
+    palavrasChave: newRaw2.map((v) =>
+      getFieldWithValidation(v, [
+        "palavras-chave",
+        "palavras chave",
+        "key words",
+      ])
+    ),
+
+    apresentacao: newRaw2.map((v) =>
+      getFieldWithValidation(v, ["apresentação", "apresentacao"])
+    ),
+
+    banca: newRaw2.map((v) => getFieldWithValidation(v, ["banca"])),
+  };
 }
 
 (async () => {
@@ -34,7 +98,7 @@ async function readFileExample(): Promise<string> {
   });
 
   const link =
-    "body > div > div:nth-child(12) > table > tbody > tr:nth-child(2) > td:nth-child(1) > h3 > u > span > a"; // seletor css do ano
+    "body > div > div:nth-child(12) > table > tbody > tr:nth-child(2) > td:nth-child(1) > h3 > u > span > a";
   await page.waitForSelector(link);
   await page.click(link);
 
@@ -65,7 +129,7 @@ async function readFileExample(): Promise<string> {
           .replaceAll("<b>", "")
           .replaceAll("<br>", "")
           .replaceAll("</b>", "")
-          .split(/: (.*)/, 2)
+          .split(/:(.+)/, 2)
           .map((v1) => {
             if (v1.trim().startsWith("<a")) {
               const re = /href="([^"]*)"/;
@@ -79,25 +143,20 @@ async function readFileExample(): Promise<string> {
       )
   );
 
-  // Creio que dá para criar uma função para mapear todos esses elementos.
-
-  const titulo = newRaw2.map((v) => v[0][1]);
-  const tg = newRaw2.map((v) => v[1][1]);
-  const propostaInicial = newRaw2.map((v) => v[2][1]);
-  const autor = newRaw2.map((v) => v[3][1]);
-  const curso = newRaw2.map((v) => v[4][1]);
-  const orientador = newRaw2.map((v) => v[5][1]);
-  const coorientador = newRaw2.map((v) => v[6][1]);
-  const possiveisAvaliadores = newRaw2.map((v) => v[7][1]);
-  const resumoDaProposta = newRaw2.map((v) => v[8][1]);
-  const palavrasChave = newRaw2.map((v) => v[9][1]);
-  const apresentacao = newRaw2.map((v) => v[10][1]);
-  const banca = newRaw2.map((v) => {
-    if (v[10][1] === "") {
-      return null;
-    }
-    return v[10][1];
-  });
+  const {
+    titulo,
+    tg,
+    propostaInicial,
+    autor,
+    curso,
+    orientador,
+    coorientador,
+    possiveisAvaliadores,
+    resumoDaProposta,
+    palavrasChave,
+    apresentacao,
+    banca,
+  } = mapFieldsFromRaw(newRaw2);
   const semestre = "2023-1";
 
   const dia = apresentacao.map((v) => {
@@ -146,14 +205,14 @@ async function readFileExample(): Promise<string> {
     })
   );
 
-  // try {
-  //   const data = new DataRepository();
-  //   await data.saveMany(scrapedDataArray);
-  // } catch (error) {
-  //   console.log(error);
-  // } finally {
-  //   console.log("finished");
-  // }
+  try {
+    const data = new DataRepository();
+    await data.saveMany(scrapedDataArray);
+  } catch (error) {
+    console.log(error);
+  } finally {
+    console.log("finished");
+  }
 
   await browser.close();
 })();
