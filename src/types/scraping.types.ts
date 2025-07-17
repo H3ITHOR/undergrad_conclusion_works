@@ -1,9 +1,9 @@
 export interface ScrapedData {
-  title: string;
+  title?: string;
   tg?: string;
   initial_proposal?: string;
-  author: string;
-  course: string;
+  author?: string;
+  course?: string;
   advisor?: string;
   co_Advisor?: string;
   possible_appraiser?: string;
@@ -13,7 +13,7 @@ export interface ScrapedData {
   local?: string;
   evaluation_panel?: string;
   key_words?: string;
-  semester: string;
+  semester?: string;
 }
 
 export interface ScrapingOptions {

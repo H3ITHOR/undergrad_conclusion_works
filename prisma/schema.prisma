@@ -9,11 +9,11 @@ datasource db {
 
 model data {
   id                 Int     @id @default(autoincrement())
-  title              String
+  title              String?
   tg                 String?
   initial_proposal   String?
-  author             String
-  course             String
+  author             String?
+  course             String?
   advisor            String?
   co_Advisor         String?
   possible_appraiser String?
@@ -23,5 +23,5 @@ model data {
   evaluation_panel   String?
   local              String?
   key_words          String?
-  semester           String
+  semester           String?
 }
