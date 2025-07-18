@@ -14,6 +14,7 @@ export interface ScrapedData {
   evaluation_panel?: string;
   key_words?: string;
   semester?: string;
+  area?: string;
 }
 
 export interface ScrapingOptions {

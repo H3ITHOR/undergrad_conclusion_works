@@ -24,4 +24,5 @@ model data {
   local              String?
   key_words          String?
   semester           String?
+  area               String?
 }
