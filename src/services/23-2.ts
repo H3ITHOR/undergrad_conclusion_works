@@ -189,59 +189,75 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     v === null || v === undefined || v === "" ? "Engenharia da Computação" : v
   );
 
-  const hasValidApresentacao =
-    apresentacao &&
-    apresentacao.some((v) => v !== null && v !== undefined && v.trim() !== "");
+  const dia = apresentacao.map((v, index) => {
+    const hasValidApresentacaoForThisItem =
+      v !== null && v !== undefined && v.trim() !== "";
 
-  const dia = hasValidApresentacao
-    ? apresentacao.map((v) => {
-        v = v?.slice(v.indexOf("dia: ") + 5, v.indexOf(","));
-        if (v?.trim() === "DD/MM/AAAA") {
-          return null;
+    if (hasValidApresentacaoForThisItem) {
+      const diaValue = v?.slice(v.indexOf("dia: ") + 5, v.indexOf(","));
+      if (diaValue?.trim() === "DD/MM/AAAA") {
+        return null;
+      }
+      return diaValue;
+    } else {
+      const dateValue = date[index];
+      if (!dateValue || dateValue.trim() === "") return null;
+      return dateValue.trim();
+    }
+  });
+
+  const hora = apresentacao.map((v, index) => {
+    const hasValidApresentacaoForThisItem =
+      v !== null && v !== undefined && v.trim() !== "";
+
+    if (hasValidApresentacaoForThisItem) {
+      const re = /hora: ([^,]+)/;
+      const match = re.exec(v);
+      const newMatch = match ? match[1]?.trim() : null;
+      if (newMatch?.trim() === "XXhYY") {
+        return null;
+      }
+      return newMatch || null;
+    } else {
+      const horaLocalValue = horaLocal[index];
+      if (!horaLocalValue) return null;
+
+      const patterns = [
+        /(\d{1,2}:\d{2})/,
+        /(\d{1,2}h\d{2})/,
+        /(\d{1,2}h)/, //
+      ];
+
+      for (const pattern of patterns) {
+        const match = horaLocalValue.match(pattern);
+        if (match) {
+          return match[1].trim();
         }
-        return v;
-      })
-    : date.map((v) => {
-        if (!v || v.trim() === "") return null;
-        return v.trim();
-      });
+      }
+      return null;
+    }
+  });
 
-  const hora = hasValidApresentacao
-    ? apresentacao.map((v?) => {
-        const re = /hora: ([^,]+)/;
-        const match = re.exec(v);
-        const newMatch = match ? match[1]?.trim() : null;
-        if (newMatch?.trim() === "XXhYY") {
-          return null;
-        }
-        return newMatch || null;
-      })
-    : horaLocal.map((v) => {
-        if (!v) return null;
+  const local = apresentacao.map((v, index) => {
+    const hasValidApresentacaoForThisItem =
+      v !== null && v !== undefined && v.trim() !== "";
 
-        // Encontra o primeiro separador (–, -, ou ,)
-        const separatorMatch = v.match(/^([^–\-,]+)/);
+    if (hasValidApresentacaoForThisItem) {
+      const localValue = v?.slice(v.indexOf("local: ") + 7);
+      if (localValue?.trim() === "LLLL") {
+        return null;
+      }
+      return localValue;
+    } else {
+      const horaLocalValue = horaLocal[index];
+      if (!horaLocalValue) return null;
 
-        return separatorMatch ? separatorMatch[1].trim() : v.trim();
-      });
-
-  const local = hasValidApresentacao
-    ? apresentacao.map((v) => {
-        v = v?.slice(v.indexOf("local: ") + 7);
-        if (v?.trim() === "LLLL") {
-          return null;
-        }
-        return v;
-      })
-    : horaLocal.map((v) => {
-        if (!v) return null;
-
-        // Encontra tudo depois do primeiro separador (–, -, ou ,)
-        const separatorMatch = v.match(/[–\-,]\s*(.+)/);
-        console.log("Match local:", separatorMatch); // DEBUG
-
-        return separatorMatch ? separatorMatch[1].trim() : null;
-      });
+      const separatorMatch = horaLocalValue.match(
+        /(?:\d{1,2}(?::|h)\d{0,2}?)\s*[–\-,]\s*(.+)/
+      );
+      return separatorMatch ? separatorMatch[1].trim() : null;
+    }
+  });
 
   const scrapedDataArray: ScrapedData[] = newRaw2.map((rawText, index) => ({
     title: titulo[index],
@@ -259,7 +275,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     hour: hora[index],
     local: local[index],
     key_words: palavrasChave[index],
-    date: data[index],
+    date: date[index],
     hourLocal: horaLocal[index],
   }));
 
