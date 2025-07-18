@@ -1,4 +1,3 @@
-import puppeteer from "puppeteer";
 import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
@@ -6,7 +5,7 @@ const fs = require("fs").promises;
 
 async function readFileExample(): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2023-2.md", "utf8");
+    const data = await fs.readFile("src/utils/2022-1.md", "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -93,54 +92,29 @@ function mapFieldsFromRaw(newRaw2: any[]) {
   let newData: string[] = [];
 
   for (let i = 0; i < data.length; i++) {
-    if (
-      data[i].includes("Título:") ||
-      data[i].includes("Aluno:") ||
-      data[i].includes("Aluna:")
-    ) {
+    // Detecta linhas que começam com número seguido de ponto
+    if (data[i].match(/^\s*\d+\.\s*/)) {
       let raw = [data[i]];
       i++;
 
       while (
         i < data.length &&
-        !data[i].includes("Banca:") &&
-        !data[i].includes("Banca Examinadora:")
+        !data[i].match(/^\s*\d+\.\s*/) && // Não é o próximo número
+        !data[i].includes("---") && // Não é separador de seção
+        !data[i].match(/^\*\*[A-Z]/) // Não é início de nova seção (ex: **Engenharia**)
       ) {
         raw.push(data[i]);
         i++;
       }
 
-      if (
-        i < data.length &&
-        (data[i].includes("Banca:") || data[i].includes("Banca Examinadora:"))
-      ) {
-        raw.push(data[i]);
+      // Volta um índice porque o while já avançou para o próximo trabalho
+      if (i < data.length && data[i].match(/^\s*\d+\.\s*/)) {
+        i--;
       }
+
       newData.push(raw.join("\n"));
     }
   }
-
-  const browser = await puppeteer.launch({});
-  const page = await browser.newPage();
-
-  await page.goto("https://cin.ufpe.br/~tg/");
-
-  const resolution = await page.evaluate(() => {
-    return {
-      width: window.screen.width,
-      height: window.screen.height,
-    };
-  });
-
-  await page.setViewport({
-    width: resolution.width,
-    height: resolution.height,
-  });
-
-  const link =
-    "body > div > div:nth-child(12) > table > tbody > tr:nth-child(2) > td:nth-child(1) > h3 > u > span > a";
-  await page.waitForSelector(link);
-  await page.click(link);
 
   const newRaw2 = newData.map((v) =>
     v
@@ -184,7 +158,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     date,
     horaLocal,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2023-2";
+  const semestre = "2022-1";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? "Engenharia da Computação" : v
@@ -282,6 +256,4 @@ function mapFieldsFromRaw(newRaw2: any[]) {
   } finally {
     console.log("finished");
   }
-
-  await browser.close();
 })();
