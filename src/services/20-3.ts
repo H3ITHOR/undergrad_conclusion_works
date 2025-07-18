@@ -1,10 +1,11 @@
+import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
 const fs = require("fs").promises;
 
 async function readFileExample(): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2022-2.md", "utf8");
+    const data = await fs.readFile("src/utils/2020-3.md", "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -157,7 +158,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     date,
     horaLocal,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2022-2";
+  const semestre = "2020-3";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? "Engenharia da Computação" : v
@@ -247,14 +248,14 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     key_words: palavrasChave[index],
   }));
 
-  // try {
-  //   const data = new DataRepository();
-  //   await data.saveMany(scrapedDataArray);
-  // } catch (error) {
-  //   console.error(error);
-  // } finally {
-  //   console.log("finished");
-  // }
+  try {
+    const data = new DataRepository();
+    await data.saveMany(scrapedDataArray);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    console.log("finished");
+  }
 
   console.log("fim");
 })();

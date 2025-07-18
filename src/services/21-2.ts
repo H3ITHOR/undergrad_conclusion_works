@@ -4,7 +4,7 @@ const fs = require("fs").promises;
 
 async function readFileExample(): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2022-2.md", "utf8");
+    const data = await fs.readFile("src/utils/2021-2.md", "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -157,7 +157,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     date,
     horaLocal,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2022-2";
+  const semestre = "2021-2";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? "Engenharia da Computação" : v
