@@ -196,12 +196,33 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     }
   }
 
+  const rawDataObject: ScrapedData[] = newData.map((v) => ({
+    raw: v,
+  }));
+
+  try {
+    const data = new DataRepository();
+    await data.saveMany(rawDataObject);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    console.log("finished");
+  }
+
   const newRaw2 = newData.map((v) =>
     v
       .replace(/Resumo da Proposta:\s*\n+/g, "Resumo da Proposta:")
       .replace(/Resumo:\s*\n+/g, "Resumo:")
       .trim()
       .split("\n")
+      .filter((linha) => {
+        if (Array.isArray(linha)) {
+          // Remove arrays que só têm elementos vazios
+          return linha.some((el) => typeof el === "string" && el.trim() !== "");
+        }
+        // Remove strings vazias ou só com espaços
+        return typeof linha === "string" && linha.trim() !== "";
+      })
       .map((v1, lineIndex) => {
         const cleanLine = v1
           .trim()
@@ -305,6 +326,10 @@ function mapFieldsFromRaw(newRaw2: any[]) {
       }
     }
 
+    //   const rawData: ScrapedData[] = data.map((v) => {
+    // raw: v,
+    //   })
+
     return null;
   });
 
@@ -328,14 +353,14 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     final_score: nota_final[index] === "." ? null : nota_final[index],
   }));
 
-  try {
-    const data = new DataRepository();
-    await data.saveMany(scrapedDataArray);
-  } catch (error) {
-    console.error(error);
-  } finally {
-    console.log("finished");
-  }
+  // try {
+  //   const data = new DataRepository();
+  //   await data.saveMany(scrapedDataArray);
+  // } catch (error) {
+  //   console.error(error);
+  // } finally {
+  //   console.log("finished");
+  // }
 
   console.log("fim");
 })();

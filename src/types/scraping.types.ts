@@ -1,4 +1,5 @@
 export interface ScrapedData {
+  raw?: string;
   title?: string;
   tg?: string;
   initial_proposal?: string;

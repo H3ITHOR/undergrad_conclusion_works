@@ -14,6 +14,10 @@ export class DataRepository {
     });
   }
 
+  async getAll(data: ScrapedData): Promise<ScrapedData[]> {
+    return await this.prisma.data.findMany();
+  }
+
   async saveMany(dataArray: ScrapedData[]): Promise<any> {
     return await this.prisma.data.createMany({
       data: dataArray,

@@ -9,6 +9,7 @@ datasource db {
 
 model data {
   id                 Int     @id @default(autoincrement())
+  raw                String?
   title              String?
   tg                 String?
   initial_proposal   String?
