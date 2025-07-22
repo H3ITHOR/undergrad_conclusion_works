@@ -25,4 +25,5 @@ model data {
   key_words          String?
   semester           String?
   area               String?
+  final_score        String?
 }
