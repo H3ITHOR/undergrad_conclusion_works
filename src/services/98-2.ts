@@ -5,7 +5,7 @@ const fs = require("fs").promises;
 
 async function readFileExample(): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2001-2.md", "utf8");
+    const data = await fs.readFile("src/utils/1998-2.md", "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -119,6 +119,8 @@ function mapFieldsFromRaw(newRaw2: any[]) {
       const avaliadoresValue = getFieldWithValidation(v, [
         "possíveis avaliadores",
         "avaliadores",
+        "avaliador",
+        "avaliadora",
       ]);
       return extractBracketText(avaliadoresValue);
     }),
@@ -244,7 +246,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     area,
     nota_final,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2001-2";
+  const semestre = "1998-2";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? null : v

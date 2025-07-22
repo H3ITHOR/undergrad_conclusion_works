@@ -5,7 +5,7 @@ const fs = require("fs").promises;
 
 async function readFileExample(): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2001-2.md", "utf8");
+    const data = await fs.readFile("src/utils/2002-1.md", "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -244,7 +244,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     area,
     nota_final,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2001-2";
+  const semestre = "2002-1";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? null : v
@@ -308,7 +308,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
 
   const scrapedDataArray: ScrapedData[] = newRaw2.map((rawText, index) => ({
     title: titulo[index],
-    tg: tg[index],
+    tg: tg[index].replace(")", ""),
     initial_proposal: propostaInicial[index],
     author: autor[index],
     course: cursoProcessado[index],

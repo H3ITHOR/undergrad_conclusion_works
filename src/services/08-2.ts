@@ -5,7 +5,7 @@ const fs = require("fs").promises;
 
 async function readFileExample(): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2001-2.md", "utf8");
+    const data = await fs.readFile("src/utils/2008-2.md", "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -43,12 +43,6 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     if (matches.length === 0) return null;
     // Retorna como string separada por espaço
     return matches.map((m) => m[0]).join(" ");
-  };
-
-  const extractNotaFinal = (str: string | null) => {
-    if (!str) return null;
-    const match = str.match(/\s*([\d.,]+)/i);
-    return match ? match[1].replace(",", ".").trim() : null;
   };
 
   return {
@@ -146,11 +140,6 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     horaLocal: newRaw2.map((v) => getFieldWithValidation(v, ["hora/local"])),
 
     area: newRaw2.map((v) => getFieldWithValidation(v, ["area", "área"])),
-
-    nota_final: newRaw2.map((v) => {
-      const notaValue = getFieldWithValidation(v, ["nota final"]);
-      return extractNotaFinal(notaValue);
-    }),
   };
 }
 
@@ -242,9 +231,8 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     date,
     horaLocal,
     area,
-    nota_final,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2001-2";
+  const semestre = "2008-2";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? null : v
@@ -323,7 +311,6 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     local: local[index],
     key_words: palavrasChave[index],
     area: area[index],
-    final_score: nota_final[index] === "." ? null : nota_final[index],
   }));
 
   try {
