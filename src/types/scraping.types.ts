@@ -1,4 +1,5 @@
 export interface ScrapedData {
+  id?: number;
   raw?: string;
   title?: string;
   tg?: string;

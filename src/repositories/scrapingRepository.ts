@@ -18,6 +18,24 @@ export class DataRepository {
     return await this.prisma.data.findMany();
   }
 
+  async findManyRaw(data: ScrapedData): Promise<ScrapedData[]> {
+    const rawData = await this.prisma.data.findMany({
+      where: {
+        raw: {
+          not: null,
+        },
+      },
+    });
+    return rawData;
+  }
+
+  async update(id: number, data: ScrapedData): Promise<ScrapedData> {
+    return await this.prisma.data.update({
+      where: { id },
+      data,
+    });
+  }
+
   async saveMany(dataArray: ScrapedData[]): Promise<any> {
     return await this.prisma.data.createMany({
       data: dataArray,

@@ -244,7 +244,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     area,
     nota_final,
   } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2002-2";
+  const semestre = "2002- 2";
 
   const cursoProcessado = curso.map((v) =>
     v === null || v === undefined || v === "" ? null : v

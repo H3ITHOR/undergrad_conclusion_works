@@ -1,14 +1,13 @@
 import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
-// Função para processar e esvaziar o campo raw
 async function processRawFromDatabase() {
-  const dataRepo = new DataRepository();
-  const allRecords: ScrapedData[] = await dataRepo.getAll({} as ScrapedData); // Busca todos os registros do banco
-
+  // const dataRepo = new DataRepository();
+  // const allRecords: ScrapedData[] = await dataRepo.findManyRaw(
+  //   {} as ScrapedData
+  // );
   function mapFieldsFromRaw(newRaw2: any[]) {
     const getFieldByName = (item: any[], fieldName: string) => {
-      // Procura pelo campo baseado no nome, não na posição
       const fieldEntry = item.find((entry) =>
         entry?.[0]?.toLowerCase().includes(fieldName.toLowerCase())
       );
@@ -16,7 +15,6 @@ async function processRawFromDatabase() {
     };
 
     const getFieldWithValidation = (item: any[], expectedFields: string[]) => {
-      // Tenta encontrar o campo usando qualquer uma das variações possíveis
       for (const fieldName of expectedFields) {
         const result = getFieldByName(item, fieldName);
         if (result) return result;
@@ -32,10 +30,8 @@ async function processRawFromDatabase() {
 
     const extractAllLinks = (str: string | null) => {
       if (!str) return null;
-      // Extrai todos os links http(s)://... até espaço ou parêntese
       const matches = [...str.matchAll(/https?:\/\/[^\s)\]]+/g)];
       if (matches.length === 0) return null;
-      // Retorna como string separada por espaço
       return matches.map((m) => m[0]).join(" ");
     };
 
@@ -67,11 +63,9 @@ async function processRawFromDatabase() {
           (entry) => entry?.[0] && entry[0].match(/^\d+\.\s*/)
         );
         if (firstEntry) {
-          // Pega tudo após o último '(' até o fim da linha
           const linkMatch = firstEntry[0].match(/\((https?:\/\/[^\s]*)$/);
           if (linkMatch) return linkMatch[1].trim();
         }
-        // Fallback para campo tradicional
         return getFieldWithValidation(v, ["tg"]);
       }),
 
@@ -150,10 +144,14 @@ async function processRawFromDatabase() {
     };
   }
 
-  for (const record of allRecords) {
-    let raw = record.raw || "";
+  const dataRepo = new DataRepository();
+  const allRecords: ScrapedData[] = await dataRepo.findManyRaw(
+    {} as ScrapedData
+  );
 
-    // Divide o raw em linhas para reaproveitar sua lógica
+  for (const record of allRecords) {
+    let raw = record.raw;
+
     let lines = raw
       .replace(/Resumo da Proposta:\s*\n+/g, "Resumo da Proposta:")
       .replace(/Resumo:\s*\n+/g, "Resumo:")
@@ -161,7 +159,6 @@ async function processRawFromDatabase() {
       .split("\n")
       .filter((linha) => linha.trim() !== "");
 
-    // Aplica o mesmo map das linhas para estrutura de chave/valor
     const mappedLines = lines.map((v1, lineIndex) => {
       const cleanLine = v1
         .trim()
@@ -172,27 +169,87 @@ async function processRawFromDatabase() {
       if (lineIndex === 0 && cleanLine.match(/^\d+\.\s*/)) {
         return [cleanLine, ""];
       }
-      return cleanLine.split(/:(.+)/, 2).map((v1) => v1.trim());
+      return cleanLine;
     });
 
-    // Extrai os campos usando sua função
     const fields = mapFieldsFromRaw([mappedLines]);
 
-    // Agora, para cada campo extraído, remova o trecho correspondente do raw
-    // Exemplo para título:
     if (fields.titulo?.[0]) {
-      const regexTitulo = new RegExp(`^\\d+\\.\\s*${fields.titulo[0]}.*`, "m");
-      raw = raw.replace(regexTitulo, "");
+      const regexTituloLinha = /^.*\d+\.\s*.*$/gim;
+      raw = raw.replace(regexTituloLinha, "");
     }
-    // Repita para outros campos, criando regexs específicos para cada um
     if (fields.autor?.[0]) {
-      const regexAutor = new RegExp(`Autor:\\s*${fields.autor[0]}.*`, "i");
-      raw = raw.replace(regexAutor, "");
+      const regexAutorLinha = /^.*(autor|author|aluno|aluna)\s*:\s*.*$/gim;
+      raw = raw.replace(regexAutorLinha, "");
     }
-    // ...repita para curso, orientador, etc...
-
-    // No final, se tudo foi lido, raw deve estar vazio ou só com espaços
-    if (raw.trim() === "") raw = null;
+    if (fields.curso?.[0]) {
+      const regexCursoLinha = /^.*(curso|course)\s*:\s*.*$/gim;
+      raw = raw.replace(regexCursoLinha, "");
+    }
+    if (fields.orientador?.[0]) {
+      const possibleStrings = [
+        "orientador",
+        "orientador(a)",
+        "orientadora",
+        "Orientador",
+        "Orientador(a)",
+        "Orientadora",
+        "orientadores",
+        "Orientadores",
+      ];
+      const regexOrientadorLinha = `/^.*${possibleStrings.join("|")}(?:\(a\))?\s*:\s*.*$/gim`;
+      raw = raw.trim().replace(regexOrientadorLinha, "");
+    }
+    if (fields.coorientador?.[0]) {
+      const regexCoorientadorLinha =
+        /^.*co[- ]?orientador(?:\(a\))?\s*:\s*.*$/gim;
+      raw = raw.replace(regexCoorientadorLinha, "");
+    }
+    if (fields.possiveisAvaliadores?.[0]) {
+      const possibleStrings = [
+        "avaliadores",
+        "possíveis avaliadores",
+        "avaliador",
+        "avaliadora",
+      ];
+      const regexAvaliadoresLinha = new RegExp(
+        `^.*(${possibleStrings.join("|")})\\s*:\\s*.*$`,
+        "gim"
+      );
+      raw = raw.replace(regexAvaliadoresLinha, "");
+    }
+    if (fields.resumoDaProposta?.[0]) {
+      const regexResumoLinha = /^.*resumo(?: da proposta)?\s*:\s*.*$/gim;
+      raw = raw.replace(regexResumoLinha, "");
+    }
+    if (fields.palavrasChave?.[0]) {
+      const regexPalavrasChaveLinha = /^.*palavras[- ]?chave\s*:\s*.*$/gim;
+      raw = raw.replace(regexPalavrasChaveLinha, "");
+    }
+    if (fields.apresentacao?.[0]) {
+      const regexApresentacaoLinha = /^.*apresenta[cç][aã]o\s*:\s*.*$/gim;
+      raw = raw.replace(regexApresentacaoLinha, "");
+    }
+    if (fields.banca?.[0]) {
+      const regexBancaLinha = /^.*banca\s*:\s*.*$/gim;
+      raw = raw.replace(regexBancaLinha, "");
+    }
+    if (fields.date?.[0]) {
+      const regexDateLinha = /^.*data\s*:\s*.*$/gim;
+      raw = raw.replace(regexDateLinha, "");
+    }
+    if (fields.horaLocal?.[0]) {
+      const regexHoraLocalLinha = /^.*hora\/local\s*:\s*.*$/gim;
+      raw = raw.replace(regexHoraLocalLinha, "");
+    }
+    if (fields.area?.[0]) {
+      const regexAreaLinha = /^.*[áa]rea\s*:\s*.*$/gim;
+      raw = raw.replace(regexAreaLinha, "");
+    }
+    if (fields.nota_final?.[0]) {
+      const regexNotaFinalLinha = /^.*nota final\s*:\s*.*$/gim;
+      raw = raw.replace(regexNotaFinalLinha, "");
+    }
 
     // Atualiza o registro no banco
     await dataRepo.update(record.id, {
@@ -207,7 +264,7 @@ async function processRawFromDatabase() {
       proposal_abstract: fields.resumoDaProposta?.[0] || null,
       key_words: fields.palavrasChave?.[0] || null,
       evaluation_panel: fields.banca?.[0] || null,
-      semester: "1998-2",
+      semester: "1999-1",
       day: fields.date?.[0] || null,
       hour: fields.horaLocal?.[0] || null,
       local: fields.area?.[0] || null,
