@@ -2,10 +2,6 @@ import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
 async function processRawFromDatabase() {
-  // const dataRepo = new DataRepository();
-  // const allRecords: ScrapedData[] = await dataRepo.findManyRaw(
-  //   {} as ScrapedData
-  // );
   function mapFieldsFromRaw(newRaw2: any[]) {
     const getFieldByName = (item: any[], fieldName: string) => {
       const fieldEntry = item.find((entry) =>
@@ -90,6 +86,12 @@ async function processRawFromDatabase() {
         const orientadorValue = getFieldWithValidation(v, [
           "orientador",
           "orientador(a)",
+          "orientadora",
+          "Orientador",
+          "Orientador(a)",
+          "Orientadora",
+          "orientadores",
+          "Orientadores",
         ]);
         return extractBracketText(orientadorValue);
       }),
@@ -151,6 +153,7 @@ async function processRawFromDatabase() {
 
   for (const record of allRecords) {
     let raw = record.raw;
+    let semester = record.semester;
 
     let lines = raw
       .replace(/Resumo da Proposta:\s*\n+/g, "Resumo da Proposta:")
@@ -169,6 +172,11 @@ async function processRawFromDatabase() {
       if (lineIndex === 0 && cleanLine.match(/^\d+\.\s*/)) {
         return [cleanLine, ""];
       }
+
+      const split = cleanLine.split(/:(.+)/);
+      if (split.length > 1) {
+        return [split[0].trim(), split[1].trim()];
+      }
       return cleanLine;
     });
 
@@ -179,7 +187,8 @@ async function processRawFromDatabase() {
       raw = raw.replace(regexTituloLinha, "");
     }
     if (fields.autor?.[0]) {
-      const regexAutorLinha = /^.*(autor|author|aluno|aluna)\s*:\s*.*$/gim;
+      const regexAutorLinha =
+        /^.*(autor|author|aluno|aluna|autora|autoras|alunos|alunas)\s*:\s*.*$/gim;
       raw = raw.replace(regexAutorLinha, "");
     }
     if (fields.curso?.[0]) {
@@ -197,8 +206,11 @@ async function processRawFromDatabase() {
         "orientadores",
         "Orientadores",
       ];
-      const regexOrientadorLinha = `/^.*${possibleStrings.join("|")}(?:\(a\))?\s*:\s*.*$/gim`;
-      raw = raw.trim().replace(regexOrientadorLinha, "");
+      const regexOrientadorLinha = new RegExp(
+        `^.*(${possibleStrings.join("|")})(?:\\(a\\))?\\s*:\\s*.*$`,
+        "gim"
+      );
+      raw = raw.replace(regexOrientadorLinha, "");
     }
     if (fields.coorientador?.[0]) {
       const regexCoorientadorLinha =
@@ -213,7 +225,7 @@ async function processRawFromDatabase() {
         "avaliadora",
       ];
       const regexAvaliadoresLinha = new RegExp(
-        `^.*(${possibleStrings.join("|")})\\s*:\\s*.*$`,
+        `^.*(${possibleStrings.join("|")})\\s*\\s*.*$`,
         "gim"
       );
       raw = raw.replace(regexAvaliadoresLinha, "");
@@ -221,6 +233,10 @@ async function processRawFromDatabase() {
     if (fields.resumoDaProposta?.[0]) {
       const regexResumoLinha = /^.*resumo(?: da proposta)?\s*:\s*.*$/gim;
       raw = raw.replace(regexResumoLinha, "");
+    }
+    if (fields.propostaInicial?.[0]) {
+      const regexPropostaInicialLinha = /^.*proposta inicial\s*:\s*.*$/gim;
+      raw = raw.replace(regexPropostaInicialLinha, "");
     }
     if (fields.palavrasChave?.[0]) {
       const regexPalavrasChaveLinha = /^.*palavras[- ]?chave\s*:\s*.*$/gim;
@@ -251,25 +267,31 @@ async function processRawFromDatabase() {
       raw = raw.replace(regexNotaFinalLinha, "");
     }
 
+    raw = raw.trim() === "" ? null : raw.trim();
+
     // Atualiza o registro no banco
     await dataRepo.update(record.id, {
-      title: fields.titulo?.[0] || null,
-      tg: fields.tg?.[0] || null,
-      initial_proposal: fields.propostaInicial?.[0] || null,
-      author: fields.autor?.[0] || null,
-      course: fields.curso?.[0] || null,
-      advisor: fields.orientador?.[0] || null,
-      co_Advisor: fields.coorientador?.[0] || null,
-      possible_appraiser: fields.possiveisAvaliadores?.[0] || null,
-      proposal_abstract: fields.resumoDaProposta?.[0] || null,
-      key_words: fields.palavrasChave?.[0] || null,
-      evaluation_panel: fields.banca?.[0] || null,
-      semester: "1999-1",
-      day: fields.date?.[0] || null,
-      hour: fields.horaLocal?.[0] || null,
-      local: fields.area?.[0] || null,
-      area: fields.area?.[0] || null,
-      final_score: fields.nota_final?.[0] || null,
+      title: record.title ? record.title : fields.titulo?.[0] || null,
+      tg: record.tg ? record.tg : fields.tg?.[0] || null,
+      initial_proposal: record.initial_proposal
+        ? record.initial_proposal
+        : fields.propostaInicial?.[0] || null,
+      author: record.author || fields.autor?.[0] || null,
+      course: record.course || fields.curso?.[0] || null,
+      advisor: record.advisor ? record.advisor : fields.orientador?.[0] || null,
+      co_Advisor: record.co_Advisor || fields.coorientador?.[0] || null,
+      possible_appraiser:
+        record.possible_appraiser || fields.possiveisAvaliadores?.[0] || null,
+      proposal_abstract:
+        record.proposal_abstract || fields.resumoDaProposta?.[0] || null,
+      key_words: record.key_words || fields.palavrasChave?.[0] || null,
+      evaluation_panel: record.evaluation_panel || fields.banca?.[0] || null,
+      semester,
+      day: record.day || fields.date?.[0] || null,
+      hour: record.hour || fields.horaLocal?.[0] || null,
+      local: record.local || fields.area?.[0] || null,
+      area: record.area ? record.area : fields.area?.[0] || null,
+      final_score: record.final_score || fields.nota_final?.[0] || null,
       raw,
     });
   }

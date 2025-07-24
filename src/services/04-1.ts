@@ -119,6 +119,8 @@ function mapFieldsFromRaw(newRaw2: any[]) {
       const avaliadoresValue = getFieldWithValidation(v, [
         "possíveis avaliadores",
         "avaliadores",
+        "avaliador",
+        "avaliadora",
       ]);
       return extractBracketText(avaliadoresValue);
     }),
@@ -169,6 +171,50 @@ function mapFieldsFromRaw(newRaw2: any[]) {
 
   let newData: string[] = [];
 
+  const possibleFields = [
+    "título",
+    "title",
+    "tg",
+    "proposta inicial",
+    "autor",
+    "author",
+    "aluno",
+    "aluna",
+    "autora",
+    "autoras",
+    "alunos",
+    "alunas",
+    "curso",
+    "course",
+    "orientador",
+    "orientador(a)",
+    "orientadora",
+    "orientadores",
+    "coorientador",
+    "co-orientador",
+    "coorientador(a)",
+    "coorientadora",
+    "coorientadores",
+    "possíveis avaliadores",
+    "avaliadores",
+    "avaliador",
+    "avaliadora",
+    "resumo da proposta",
+    "resumo",
+    "palavras-chave",
+    "palavras chave",
+    "key words",
+    "apresentação",
+    "apresentacao",
+    "defesa",
+    "banca",
+    "data",
+    "hora/local",
+    "área",
+    "area",
+    "nota final",
+  ];
+
   for (let i = 0; i < data.length; i++) {
     // Detecta linhas que começam com número seguido de ponto
     if (data[i].match(/^\s*\d+\.\s*/)) {
@@ -181,6 +227,23 @@ function mapFieldsFromRaw(newRaw2: any[]) {
         !data[i].includes("---") && // Não é separador de seção
         !data[i].match(/^\*\*[A-Z]/) // Não é início de nova seção (ex: **Engenharia**)
       ) {
+        // Verifica se a linha contém algum dos possíveis campos
+        const isFieldLine = possibleFields.some((field) =>
+          data[i]
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .includes(
+              field
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+            )
+        );
+        if (!isFieldLine && raw.length > 1) {
+          // Se não for campo e já leu pelo menos uma linha além do título, encerra o raw
+          break;
+        }
         raw.push(data[i]);
         i++;
       }
@@ -194,141 +257,14 @@ function mapFieldsFromRaw(newRaw2: any[]) {
     }
   }
 
-  const newRaw2 = newData.map((v) =>
-    v
-      .replace(/Resumo da Proposta:\s*\n+/g, "Resumo da Proposta:")
-      .replace(/Resumo:\s*\n+/g, "Resumo:")
-      .trim()
-      .split("\n")
-      .map((v1, lineIndex) => {
-        const cleanLine = v1
-          .trim()
-          .replaceAll("<b>", "")
-          .replaceAll("<br>", "")
-          .replaceAll("</b>", "");
-
-        // Se é a primeira linha E começa com número, NÃO divide por ':'
-        if (lineIndex === 0 && cleanLine.match(/^\d+\.\s*/)) {
-          return [cleanLine, ""]; // Retorna a linha completa como chave, valor vazio
-        }
-
-        // Para todas as outras linhas, faz o split normal
-        return cleanLine.split(/:(.+)/, 2).map((v1) => {
-          if (v1.trim().startsWith("<a")) {
-            const re = /href="([^"]*)"/;
-            const match = re.exec(v1);
-            return `https://cin.ufpe.br/~tg/2024-1/${(match?.[1] || "")
-              .replaceAll('"', "")
-              .replace("href=", "")}`;
-          }
-          return v1.trim();
-        });
-      })
-  );
-
-  const {
-    titulo,
-    tg,
-    propostaInicial,
-    autor,
-    curso,
-    orientador,
-    coorientador,
-    possiveisAvaliadores,
-    resumoDaProposta,
-    palavrasChave,
-    apresentacao,
-    banca,
-    date,
-    horaLocal,
-    area,
-    nota_final,
-  } = mapFieldsFromRaw(newRaw2);
-  const semestre = "2004-1";
-
-  const cursoProcessado = curso.map((v) =>
-    v === null || v === undefined || v === "" ? null : v
-  );
-
-  const dia = apresentacao.map((v) => {
-    if (!v) return null;
-
-    // Captura apenas a data no formato dd/mm/yyyy, ignorando qualquer texto antes
-    const diaMatch = v.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-    return diaMatch ? diaMatch[1] : null;
-  });
-
-  const hora = apresentacao.map((v) => {
-    if (!v) return null;
-
-    const horaMatch = v.match(/(\d{1,2}:\d{2})hs/);
-    if (horaMatch) {
-      return horaMatch[1]; // Retorna "14:00"
-    }
-
-    // Fallback para formato tradicional
-    const re = /hora[:\s]*([^,]+)/;
-    const match = re.exec(v);
-    const newMatch = match ? match[1]?.trim() : null;
-    if (newMatch && newMatch.trim() !== "XXhYY") {
-      return newMatch;
-    }
-
-    return null;
-  });
-
-  const local = apresentacao.map((v) => {
-    if (!v) return null;
-
-    const parts = v.split(",");
-    if (parts.length >= 4) {
-      const localPart = parts[parts.length - 1].trim();
-      if (
-        localPart &&
-        localPart !== "LOCAL A CONFIRMAR" &&
-        !localPart.includes("feira") &&
-        !localPart.includes("/") &&
-        !localPart.includes("hs")
-      ) {
-        return localPart;
-      }
-      return null;
-    }
-
-    if (parts.length === 3) {
-      const lastPart = parts[2].trim();
-      const localOnly = lastPart.replace(/\d{1,2}:\d{2}hs\s*/, "").trim();
-      if (localOnly && localOnly !== "LOCAL A CONFIRMAR") {
-        return localOnly;
-      }
-    }
-
-    return null;
-  });
-
-  const scrapedDataArray: ScrapedData[] = newRaw2.map((rawText, index) => ({
-    title: titulo[index],
-    tg: tg[index],
-    initial_proposal: propostaInicial[index],
-    author: autor[index],
-    course: cursoProcessado[index],
-    advisor: orientador[index],
-    co_Advisor: coorientador[index],
-    possible_appraiser: possiveisAvaliadores[index],
-    proposal_abstract: resumoDaProposta[index],
-    evaluation_panel: banca[index],
-    semester: semestre,
-    day: dia[index],
-    hour: hora[index],
-    local: local[index],
-    key_words: palavrasChave[index],
-    area: area[index],
-    final_score: nota_final[index] === "." ? null : nota_final[index],
+  const rawDataObject: ScrapedData[] = newData.map((v) => ({
+    raw: v,
+    semester: "2004-1",
   }));
 
   try {
     const data = new DataRepository();
-    await data.saveMany(scrapedDataArray);
+    await data.saveMany(rawDataObject);
   } catch (error) {
     console.error(error);
   } finally {
