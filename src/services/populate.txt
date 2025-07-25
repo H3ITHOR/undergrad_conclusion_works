@@ -1,0 +1,37 @@
+# Execute manualmente todos os scripts de 98-2 até 10-2 dentro da pasta src/services
+
+files=(
+  "98-2.ts"
+  "99-1.ts"
+  "99-2.ts"
+  "00-1.ts"
+  "00-2.ts"
+  "01-1.ts"
+  "01-2.ts"
+  "02-1.ts"
+  "02-2.ts"
+  "03-1.ts"
+  "03-2.ts"
+  "04-1.ts"
+  "04-2.ts"
+  "05-1.ts"
+  "05-2.ts"
+  "06-1.ts"
+  "06-2.ts"
+  "07-1.ts"
+  "07-2.ts"
+  "08-1.ts"
+  "08-2.ts"
+  "09-1.ts"
+  "09-2.ts"
+  "10-1.ts"
+  "10-2.ts"
+)
+
+for script in "${files[@]}"; do
+  fullpath="src/services/$script"
+  if [ -f "$fullpath" ]; then
+    echo "Executando $fullpath..."
+    npx ts-node "$fullpath"
+  fi
+done

@@ -220,34 +220,16 @@ function mapFieldsFromRaw(newRaw2: any[]) {
   ];
 
   for (let i = 0; i < data.length; i++) {
-    // Detecta linhas que começam com número seguido de ponto
     if (data[i].match(/^\s*\d+\.\s*/)) {
       let raw = [data[i]];
       i++;
 
       while (
         i < data.length &&
-        !data[i].match(/^\s*\d+\.\s*/) && // Não é o próximo número
-        !data[i].includes("---") && // Não é separador de seção
-        !data[i].match(/^\*\*[A-Z]/) // Não é início de nova seção (ex: **Engenharia**)
+        !data[i].match(/^\s*\d+\.\s*/) &&
+        !data[i].includes("---") &&
+        !data[i].match(/^\*\*[A-Z]/)
       ) {
-        // // Verifica se a linha contém algum dos possíveis campos
-        // const isFieldLine = possibleFields.some((field) =>
-        //   data[i]
-        //     .toLowerCase()
-        //     .normalize("NFD")
-        //     .replace(/[\u0300-\u036f]/g, "")
-        //     .includes(
-        //       field
-        //         .toLowerCase()
-        //         .normalize("NFD")
-        //         .replace(/[\u0300-\u036f]/g, "")
-        //     )
-        // );
-        // if (!isFieldLine && raw.length > 1) {
-        //   // Se não for campo e já leu pelo menos uma linha além do título, encerra o raw
-        //   break;
-        // }
         raw.push(data[i]);
         i++;
       }

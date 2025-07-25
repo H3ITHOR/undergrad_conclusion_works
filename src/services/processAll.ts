@@ -3,9 +3,64 @@ import { ScrapedData } from "../types/scraping.types";
 
 const fs = require("fs").promises;
 
-async function readFileExample(): Promise<string> {
+const arraySemesters: string[] = [
+  "1998-2",
+  "1999-1",
+  "1999-2",
+  "2000-1",
+  "2000-2",
+  "2001-1",
+  "2001-2",
+  "2002-1",
+  "2002-2",
+  "2003-1",
+  "2003-2",
+  "2004-1",
+  "2004-2",
+  "2005-1",
+  "2005-2",
+  "2006-1",
+  "2006-2",
+  "2007-1",
+  "2007-2",
+  "2008-1",
+  "2008-2",
+  "2009-1",
+  "2009-2",
+  "2010-1",
+  "2010-2",
+  "2011-1",
+  "2011-2",
+  "2012-1",
+  "2012-2",
+  "2013-1",
+  "2013-2",
+  "2014-1",
+  "2014-2",
+  "2015-1",
+  "2015-2",
+  "2016-1",
+  "2016-2",
+  "2017-1",
+  "2017-2",
+  "2018-1",
+  "2018-2",
+  "2019-1",
+  "2019-2",
+  "2020-1",
+  "2020-2",
+  "2021-1",
+  "2021-2",
+  "2022-1",
+  "2022-2",
+  "2023-1",
+  "2023-2",
+  "2024-1",
+];
+
+async function readFileExample(semester): Promise<string> {
   try {
-    const data = await fs.readFile("src/utils/2009-2.md", "utf8");
+    const data = await fs.readFile(`src/utils/${semester}.md`, "utf8");
     return data;
   } catch (err) {
     console.error("Error reading file:", err);
@@ -160,8 +215,9 @@ function mapFieldsFromRaw(newRaw2: any[]) {
   };
 }
 
-(async () => {
-  const data = (await readFileExample())
+async function execute(semester: string) {
+  console.log("actual semester: " + semester);
+  const data = (await readFileExample(semester))
     .replaceAll("*", "")
     .replaceAll("[aqui](", "")
     .replaceAll("[aq]", ", ")
@@ -245,7 +301,7 @@ function mapFieldsFromRaw(newRaw2: any[]) {
 
   const rawDataObject: ScrapedData[] = newData.map((v) => ({
     raw: v,
-    semester: "2009-2",
+    semester,
   }));
 
   try {
@@ -254,8 +310,16 @@ function mapFieldsFromRaw(newRaw2: any[]) {
   } catch (error) {
     console.error(error);
   } finally {
-    console.log("finished");
+    console.log("finished semester " + semester);
   }
 
   console.log("fim");
-})();
+}
+
+async function main() {
+  for (const semester of arraySemesters) {
+    await execute(semester);
+  }
+}
+
+main();

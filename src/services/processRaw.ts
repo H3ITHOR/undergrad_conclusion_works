@@ -20,8 +20,15 @@ async function processRawFromDatabase() {
 
     const extractBracketText = (str: string | null) => {
       if (!str) return null;
-      const match = str.match(/\[([^\]]+)\]/);
-      return match ? match[1].trim() : str.trim();
+
+      str = str.replace(/\*+/g, "").trim();
+
+      const bracketMatch = str.match(/\[([^\]]+)\]/);
+      if (bracketMatch) {
+        return bracketMatch[1].trim();
+      }
+
+      return str.trim();
     };
 
     const extractAllLinks = (str: string | null) => {
@@ -39,22 +46,98 @@ async function processRawFromDatabase() {
 
     return {
       titulo: newRaw2.map((v) => {
+        // 1. Busca pelo formato "n. Título" na mesma linha
         const firstEntry = v.find(
-          (entry) => entry?.[0] && entry[0].match(/^\d+\.\s*/)
+          (entry) =>
+            entry?.[0] &&
+            entry[0].match(/^\d+\.\s*.*$/) &&
+            !entry[0].match(/^\d+\.\s*$/) // Não é só o número
         );
         if (firstEntry) {
           let line = firstEntry[0];
           line = extractBracketText(line);
-          return line
-            .replace(/^\d+\.\s*/, "")
-            .replace("*", "")
-            .trim();
+          line = line.replace(/^\d+\.\s*/, ""); // Remove "n."
+          line = line
+            .replace(/t[ií]tulo\s*:\s*/i, "")
+            .replace(/title\s*:\s*/i, "");
+          return line.replace("*", "").trim();
         }
-        let traditionalTitle = getFieldWithValidation(v, ["título", "title"]);
-        return traditionalTitle || null;
+
+        // 2. Caso: "n." em uma linha e "Título: ..." na próxima
+        for (let i = 0; i < v.length - 1; i++) {
+          const current = v[i]?.[0]?.trim();
+          const next = v[i + 1]?.[0]?.trim();
+
+          if (
+            current &&
+            current.match(/^\d+\.\s*$/) && // Só número e ponto
+            next &&
+            (next.toLowerCase().includes("título:") ||
+              next.toLowerCase().includes("title:"))
+          ) {
+            let line = next;
+            line = extractBracketText(line);
+            line = line
+              .replace(/t[ií]tulo\s*:\s*/i, "")
+              .replace(/title\s*:\s*/i, "");
+            return line.replace("*", "").trim();
+          }
+        }
+
+        // 3. Caso: "n." em uma linha e título direto na próxima (sem "Título:")
+        for (let i = 0; i < v.length - 1; i++) {
+          const current = v[i]?.[0]?.trim();
+          const next = v[i + 1]?.[0]?.trim();
+
+          if (
+            current &&
+            current.match(/^\d+\.\s*$/) && // Só número e ponto
+            next &&
+            !next.toLowerCase().includes("autor") &&
+            !next.toLowerCase().includes("curso") &&
+            !next.toLowerCase().includes("orientador") &&
+            !next.toLowerCase().includes("resumo") &&
+            !next.toLowerCase().includes("proposta") &&
+            next.length > 10 // Título tem pelo menos 10 caracteres
+          ) {
+            let line = next;
+            line = extractBracketText(line);
+            return line.replace("*", "").trim();
+          }
+        }
+
+        // 4. Busca por campo explícito "Título:" ou "Title:"
+        const explicitTitleEntry = v.find(
+          (entry) =>
+            entry?.[0] &&
+            (entry[0].toLowerCase().includes("título") ||
+              entry[0].toLowerCase().includes("title"))
+        );
+        if (explicitTitleEntry) {
+          return explicitTitleEntry[1]?.trim() || explicitTitleEntry[0]?.trim();
+        }
+
+        // 5. Fallback usando campo "tg"
+        let tgTitle = getFieldWithValidation(v, [
+          "tg",
+          "trabalho de graduação",
+          "trabalho de graduaçao",
+          "trabalho de graduacao",
+        ]);
+        if (tgTitle) {
+          return tgTitle.trim();
+        }
+
+        return null;
       }),
 
       tg: newRaw2.map((v) => {
+        const tgValue = getFieldWithValidation(v, [
+          "tg",
+          "trabalho de graduaçao",
+          "trabalho de graduação",
+          "trabalho de graduacao",
+        ]);
         const firstEntry = v.find(
           (entry) => entry?.[0] && entry[0].match(/^\d+\.\s*/)
         );
@@ -62,12 +145,28 @@ async function processRawFromDatabase() {
           const linkMatch = firstEntry[0].match(/\((https?:\/\/[^\s]*)$/);
           if (linkMatch) return linkMatch[1].trim();
         }
-        return getFieldWithValidation(v, ["tg"]);
+        return tgValue || getFieldWithValidation(v, ["tg"]);
       }),
 
       propostaInicial: newRaw2.map((v) => {
         const propostaValue = getFieldWithValidation(v, ["proposta inicial"]);
+        if (!propostaValue) return null;
+
+        // Se o texto começa com "proposta", extrai apenas os links
+        if (propostaValue.toLowerCase().startsWith("proposta")) {
+          return extractAllLinks(propostaValue);
+        }
+
         return extractAllLinks(propostaValue);
+      }),
+
+      course: newRaw2.map((v) => {
+        const courseValue = getFieldWithValidation(v, [
+          "curso",
+          "course",
+          "cursos",
+        ]);
+        return courseValue;
       }),
 
       autor: newRaw2.map((v) => {
@@ -220,7 +319,7 @@ async function processRawFromDatabase() {
 
     // Pré-processa o resumo para separar apresentação
     let apresentacaoText = null;
-    let resumoText = raw;
+    let resumoText = raw.trim();
 
     // Regex para encontrar apresentação dentro do resumo
     const apresentacaoRegex = /(apresenta[cç][aã]o\s*:\s*.+)$/im;
@@ -282,13 +381,19 @@ async function processRawFromDatabase() {
       const regexTituloLinha = /^.*\d+\.\s*.*$/gim;
       raw = raw.replace(regexTituloLinha, "");
     }
+
+    if (fields.tg?.[0]) {
+      const regexTGLinha =
+        /^.*(tg|trabalho de graduação|trabalho de graduaçao|trabalho de graduacao|tg final)\s*.*$/gim;
+      raw = raw.replace(regexTGLinha, "");
+    }
     if (fields.autor?.[0]) {
       const regexAutorLinha =
-        /^.*(autor|author|aluno|aluna|autora|autoras|alunos|alunas)\s*:\s*.*$/gim;
+        /^.*(autor|author|aluno|aluna|autora|autoras|alunos|alunas|autor\(a\)|Autor\(a\))\s*:.*$/gim;
       raw = raw.replace(regexAutorLinha, "");
     }
     if (fields.curso?.[0]) {
-      const regexCursoLinha = /^.*(curso|course)\s*:\s*.*$/gim;
+      const regexCursoLinha = /^.*(curso|course)\s*:.*$/gim;
       raw = raw.replace(regexCursoLinha, "");
     }
     if (fields.orientador?.[0]) {
@@ -309,8 +414,7 @@ async function processRawFromDatabase() {
       raw = raw.replace(regexOrientadorLinha, "");
     }
     if (fields.coorientador?.[0]) {
-      const regexCoorientadorLinha =
-        /^.*co[- ]?orientador(?:\(a\))?\s*:\s*.*$/gim;
+      const regexCoorientadorLinha = /^.*co[- ]?orientador(?:\(a\))?\s*:.*$/gim;
       raw = raw.replace(regexCoorientadorLinha, "");
     }
     if (fields.possiveisAvaliadores?.[0]) {
@@ -339,11 +443,13 @@ async function processRawFromDatabase() {
       raw = raw.replace(regexPalavrasChaveLinha, "");
     }
     if (fields.apresentacao?.[0]) {
-      const regexApresentacaoLinha = /^.*apresenta[cç][aã]o\s*:\s*.*$/gim;
+      const regexApresentacaoLinha =
+        /^.*(apresenta[cç][aã]o|defesa|apresentacao|apresenta[çc][aã]o|presentation)\s*:\s*.*$/gim;
       raw = raw.replace(regexApresentacaoLinha, "");
     }
     if (fields.banca?.[0]) {
-      const regexBancaLinha = /^.*banca\s*:\s*.*$/gim;
+      const regexBancaLinha =
+        /^.*(banca | banca examinadora | bancas | bancas examinadoras)\s*:.*$/gim;
       raw = raw.replace(regexBancaLinha, "");
     }
     if (fields.date?.[0]) {
