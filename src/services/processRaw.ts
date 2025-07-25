@@ -2,7 +2,7 @@ import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
 async function processRawFromDatabase() {
-  function mapFieldsFromRaw(newRaw2: any[]) {
+  function mapFieldsFromRaw(newRaw2: any[], possibleFields: string[]) {
     const getFieldByName = (item: any[], fieldName: string) => {
       const fieldEntry = item.find((entry) =>
         entry?.[0]?.toLowerCase().includes(fieldName.toLowerCase())
@@ -114,10 +114,32 @@ async function processRawFromDatabase() {
         ]);
         return extractBracketText(avaliadoresValue);
       }),
-
-      resumoDaProposta: newRaw2.map((v) =>
-        getFieldWithValidation(v, ["resumo da proposta", "resumo"])
+      apresentacao: newRaw2.map((v) =>
+        getFieldWithValidation(v, ["apresentação", "apresentacao", "defesa"])
       ),
+
+      resumoDaProposta: newRaw2.map((v) => {
+        const resumoIndex = v.findIndex(
+          (entry) =>
+            entry?.[0] &&
+            ["resumo da proposta", "resumo"].some((field) =>
+              entry[0].toLowerCase().includes(field)
+            )
+        );
+        if (resumoIndex === -1) return null;
+
+        let resumoLines = [];
+        for (let i = resumoIndex; i < v.length; i++) {
+          const entry = v[i];
+          const fieldName = entry?.[0]?.toLowerCase().replace(/\*/g, "").trim();
+          const isNewField = possibleFields.some(
+            (field) => fieldName && fieldName === field.toLowerCase()
+          );
+          if (i !== resumoIndex && isNewField) break;
+          resumoLines.push(entry?.[1] || entry?.[0] || "");
+        }
+        return resumoLines.join(" ").replace(/\n+/g, " ").trim();
+      }),
 
       palavrasChave: newRaw2.map((v) =>
         getFieldWithValidation(v, [
@@ -125,10 +147,6 @@ async function processRawFromDatabase() {
           "palavras chave",
           "key words",
         ])
-      ),
-
-      apresentacao: newRaw2.map((v) =>
-        getFieldWithValidation(v, ["apresentação", "apresentacao", "defesa"])
       ),
 
       banca: newRaw2.map((v) => getFieldWithValidation(v, ["banca"])),
@@ -151,23 +169,85 @@ async function processRawFromDatabase() {
     {} as ScrapedData
   );
 
+  const possibleFields = [
+    "título",
+    "title",
+    "tg",
+    "proposta inicial",
+    "autor",
+    "author",
+    "aluno",
+    "aluna",
+    "autora",
+    "autoras",
+    "alunos",
+    "alunas",
+    "curso",
+    "course",
+    "orientador",
+    "orientador(a)",
+    "orientadora",
+    "orientadores",
+    "coorientador",
+    "co-orientador",
+    "coorientador(a)",
+    "coorientadora",
+    "coorientadores",
+    "possíveis avaliadores",
+    "avaliadores",
+    "avaliador",
+    "avaliadora",
+    "resumo da proposta",
+    "resumo",
+    "palavras-chave",
+    "palavras chave",
+    "key words",
+    "apresentação",
+    "apresentacao",
+    "defesa",
+    "banca",
+    "data",
+    "hora/local",
+    "área",
+    "area",
+    "nota final",
+    "nota",
+  ];
+
   for (const record of allRecords) {
     let raw = record.raw;
     let semester = record.semester;
 
-    let lines = raw
+    // Pré-processa o resumo para separar apresentação
+    let apresentacaoText = null;
+    let resumoText = raw;
+
+    // Regex para encontrar apresentação dentro do resumo
+    const apresentacaoRegex = /(apresenta[cç][aã]o\s*:\s*.+)$/im;
+    const apresentacaoMatch = raw.match(apresentacaoRegex);
+
+    if (apresentacaoMatch) {
+      apresentacaoText = apresentacaoMatch[1].trim();
+      // Remove apresentação do resumo
+    }
+
+    // Agora, use resumoText para split das linhas
+    let lines = resumoText
       .replace(/Resumo da Proposta:\s*\n+/g, "Resumo da Proposta:")
       .replace(/Resumo:\s*\n+/g, "Resumo:")
       .trim()
       .split("\n")
       .filter((linha) => linha.trim() !== "");
 
+    // Mapeia as linhas normalmente
     const mappedLines = lines.map((v1, lineIndex) => {
       const cleanLine = v1
         .trim()
         .replaceAll("<b>", "")
         .replaceAll("<br>", "")
-        .replaceAll("</b>", "");
+        .replaceAll("</b>", "")
+        .replace(/^\*+/, "") // Remove asteriscos do início
+        .trim();
 
       if (lineIndex === 0 && cleanLine.match(/^\d+\.\s*/)) {
         return [cleanLine, ""];
@@ -175,12 +255,28 @@ async function processRawFromDatabase() {
 
       const split = cleanLine.split(/:(.+)/);
       if (split.length > 1) {
-        return [split[0].trim(), split[1].trim()];
+        const fieldName = split[0].replace(/^\*+/, "").trim().toLowerCase();
+        const value = split[1].trim();
+        return [fieldName, value];
       }
-      return cleanLine;
+
+      return [cleanLine.toLowerCase(), ""];
     });
 
-    const fields = mapFieldsFromRaw([mappedLines]);
+    // Adiciona apresentação como campo mapeado
+    if (apresentacaoText) {
+      mappedLines.push(["apresentação", apresentacaoText]);
+    }
+
+    const notaFinalRegex = /nota final\s*:\s*([\d.,]+)/i;
+    const notaFinalMatch = raw.match(notaFinalRegex);
+
+    let notaFinalValue = null;
+    if (notaFinalMatch) {
+      notaFinalValue = notaFinalMatch[1].replace(",", ".").trim();
+    }
+
+    const fields = mapFieldsFromRaw([mappedLines], possibleFields);
 
     if (fields.titulo?.[0]) {
       const regexTituloLinha = /^.*\d+\.\s*.*$/gim;
@@ -269,6 +365,50 @@ async function processRawFromDatabase() {
 
     raw = raw.trim() === "" ? null : raw.trim();
 
+    const apresentacaoValue =
+      fields.apresentacao?.[0] || fields.horaLocal?.[0] || "";
+    let day = null,
+      hour = null,
+      local = null;
+
+    if (apresentacaoValue) {
+      // Normaliza para facilitar o parsing
+      const value = apresentacaoValue
+        .replace(/\s+/g, " ")
+        .replace(/[\*]+/g, "")
+        .trim();
+
+      // Dia: busca por dd/mm/yyyy ou dd/mm/yy
+      const dayMatch = value.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+      day = dayMatch ? dayMatch[1] : null;
+
+      // Hora: busca por hh:mm, hh:mmhs, hhhs, etc
+      const hourMatch =
+        value.match(/(\d{1,2}:\d{2}(?:h)?(?:s)?)/) ||
+        value.match(/(\d{1,2}h(?:s)?)/);
+      hour = hourMatch ? hourMatch[1] : null;
+
+      // Local: normalmente após a última vírgula ou após "local:"
+      const localMatch = value.match(/local[:\s]*([^\n,]+)/i);
+      if (localMatch) {
+        local = localMatch[1].trim();
+      } else {
+        // Se não tiver "local:", pega o último trecho após vírgula
+        const parts = value.split(",");
+        if (parts.length > 1) {
+          local = parts[parts.length - 1].trim();
+          // Remove possíveis textos irrelevantes
+          if (
+            local.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) ||
+            local.match(/\d{1,2}:\d{2}/) ||
+            local.match(/\d{1,2}h/)
+          ) {
+            local = null;
+          }
+        }
+      }
+    }
+
     // Atualiza o registro no banco
     await dataRepo.update(record.id, {
       title: record.title ? record.title : fields.titulo?.[0] || null,
@@ -287,10 +427,10 @@ async function processRawFromDatabase() {
       key_words: record.key_words || fields.palavrasChave?.[0] || null,
       evaluation_panel: record.evaluation_panel || fields.banca?.[0] || null,
       semester,
-      day: record.day || fields.date?.[0] || null,
-      hour: record.hour || fields.horaLocal?.[0] || null,
-      local: record.local || fields.area?.[0] || null,
       area: record.area ? record.area : fields.area?.[0] || null,
+      day: record.day || day,
+      hour: record.hour || hour,
+      local: record.local || local,
       final_score: record.final_score || fields.nota_final?.[0] || null,
       raw,
     });
