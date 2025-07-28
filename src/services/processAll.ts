@@ -295,7 +295,20 @@ async function execute(semester: string) {
         i--;
       }
 
-      newData.push(raw.join("\n"));
+      // Processa o raw para remover quebras de linha dos resumos
+      let processedRaw = raw.join("\n");
+
+      // Identifica e processa seções de resumo
+      processedRaw = processedRaw.replace(
+        /(resumo da proposta:|resumo:)([\s\S]*?)(?=\n\s*\*\*|$)/gi,
+        (match, label, content) => {
+          // Remove quebras de linha do conteúdo do resumo e substitui por espaços
+          const cleanContent = content.replace(/\n+/g, " ").trim();
+          return `${label} ${cleanContent}`;
+        }
+      );
+
+      newData.push(processedRaw);
     }
   }
 
