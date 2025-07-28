@@ -4,9 +4,27 @@ import { ScrapedData } from "../types/scraping.types";
 async function processRawFromDatabase() {
   function mapFieldsFromRaw(newRaw2: any[], possibleFields: string[]) {
     const getFieldByName = (item: any[], fieldName: string) => {
-      const fieldEntry = item.find((entry) =>
-        entry?.[0]?.toLowerCase().includes(fieldName.toLowerCase())
-      );
+      const fieldEntry = item.find((entry) => {
+        if (!entry?.[0]) return false;
+
+        const entryText = entry[0]
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[_*]/g, "")
+          .replace(/:/g, "")
+          .trim();
+
+        const searchField = fieldName
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/:/g, "")
+          .trim();
+
+        return entryText.startsWith(searchField);
+      });
+
       return fieldEntry?.[1] || null;
     };
 
@@ -149,15 +167,31 @@ async function processRawFromDatabase() {
       }),
 
       propostaInicial: newRaw2.map((v) => {
-        const propostaValue = getFieldWithValidation(v, ["proposta inicial"]);
-        if (!propostaValue) return null;
+        let propostaValue = getFieldWithValidation(v, [
+          "proposta inicial",
+          "proposta",
+          "initial proposal",
+          "proposta do trabalho",
+          "proposta de trabalho",
+        ]);
 
-        // Se o texto começa com "proposta", extrai apenas os links
-        if (propostaValue.toLowerCase().startsWith("proposta")) {
-          return extractAllLinks(propostaValue);
+        if (!propostaValue) {
+          for (const entry of v) {
+            if (!entry?.[0] && !entry?.[1]) continue;
+            const text = (entry[1] || entry[0] || "").toString();
+            const linkMatch = text.match(/https?:\/\/[^\s)\]]+/);
+            if (linkMatch) return linkMatch[0];
+          }
+          return null;
         }
 
-        return extractAllLinks(propostaValue);
+        const links = extractAllLinks(propostaValue);
+        if (links) return links;
+
+        return propostaValue
+          .replace(/proposta\s*(?:inicial)?\s*:\s*/gi, "")
+          .replace(/\[.*?\]/g, "")
+          .trim();
       }),
 
       course: newRaw2.map((v) => {
@@ -166,17 +200,105 @@ async function processRawFromDatabase() {
           "course",
           "cursos",
         ]);
+
+        if (!courseValue) {
+          for (const entry of v) {
+            if (!entry?.[0]) continue;
+            const line = entry[0].toLowerCase();
+            if (
+              line.includes("ciência da computação") ||
+              line.includes("engenharia da computação") ||
+              line.includes("sistemas de informação") ||
+              line.includes("ciencia da computacao") ||
+              line.includes("engenharia da computacao") ||
+              line.includes("sistemas de informacao")
+            ) {
+              return entry[0].trim();
+            }
+          }
+        }
+
         return courseValue;
       }),
 
       autor: newRaw2.map((v) => {
-        const autorValue = getFieldWithValidation(v, [
+        // Múltiplas estratégias para encontrar o autor
+        let autorValue = null;
+
+        // 1. Busca padrão com getFieldWithValidation
+        autorValue = getFieldWithValidation(v, [
           "autor",
           "author",
           "aluno",
           "aluna",
+          "autora",
+          "autoras",
+          "alunos",
+          "alunas",
+          "autor(a)",
+          "autor\\(a\\)",
         ]);
-        return extractBracketText(autorValue);
+
+        // 2. Se não encontrou, busca mais diretamente nas linhas
+        if (!autorValue) {
+          for (const entry of v) {
+            if (!entry?.[0]) continue;
+
+            const line = entry[0].toLowerCase().trim();
+            if (
+              line.includes("autor") ||
+              line.includes("author") ||
+              line.includes("aluno") ||
+              line.includes("aluna")
+            ) {
+              autorValue = entry[1] || entry[0];
+              break;
+            }
+          }
+        }
+
+        // 3. Busca por padrão "Autor: Nome" ou "**Autor: Nome**"
+        if (!autorValue) {
+          for (const entry of v) {
+            if (!entry?.[0]) continue;
+
+            const fullLine = entry[0];
+            const autorMatch = fullLine.match(
+              /\*{0,2}autor(?:\(a\))?\s*:\s*(.+?)\*{0,2}$/i
+            );
+            if (autorMatch) {
+              autorValue = autorMatch[1].trim();
+              break;
+            }
+          }
+        }
+
+        if (!autorValue) return null;
+
+        // Limpeza do valor encontrado
+        let cleanAutor = autorValue;
+
+        // Remove prefixos comuns
+        cleanAutor = cleanAutor
+          .replace(/^autor(?:\(a\))?\s*:\s*/gi, "")
+          .replace(/^author\s*:\s*/gi, "")
+          .replace(/^aluno(?:a)?\s*:\s*/gi, "");
+
+        // Extrai texto entre colchetes se houver
+        const bracketText = extractBracketText(cleanAutor);
+        if (bracketText && bracketText !== cleanAutor) {
+          cleanAutor = bracketText;
+        }
+
+        // Limpeza final
+        cleanAutor = cleanAutor
+          .replace(/\*\*/g, "")
+          .replace(/_/g, "")
+          .replace(/^\*+/, "")
+          .replace(/\*+$/, "")
+          .trim();
+
+        return cleanAutor || null;
       }),
 
       curso: newRaw2.map((v) => getFieldWithValidation(v, ["curso", "course"])),
@@ -207,6 +329,7 @@ async function processRawFromDatabase() {
       possiveisAvaliadores: newRaw2.map((v) => {
         const avaliadoresValue = getFieldWithValidation(v, [
           "possíveis avaliadores",
+          "possíveis avaliador",
           "avaliadores",
           "avaliador",
           "avaliadora",
@@ -254,7 +377,31 @@ async function processRawFromDatabase() {
 
       horaLocal: newRaw2.map((v) => getFieldWithValidation(v, ["hora/local"])),
 
-      area: newRaw2.map((v) => getFieldWithValidation(v, ["area", "área"])),
+      area: newRaw2.map((v) => {
+        const areaValue = getFieldWithValidation(v, ["area", "área"]);
+
+        // Se não encontrou, busca por padrões comuns de área
+        if (!areaValue) {
+          for (const entry of v) {
+            if (!entry?.[0]) continue;
+            const line = entry[0].toLowerCase();
+            if (
+              line.includes("banco de dados") ||
+              line.includes("engenharia de software") ||
+              line.includes("redes") ||
+              line.includes("processamento de imagem") ||
+              line.includes("inteligência artificial") ||
+              line.includes("realidade virtual") ||
+              line.includes("sistemas distribuídos") ||
+              line.includes("qualidade de software")
+            ) {
+              return entry[0].trim();
+            }
+          }
+        }
+
+        return areaValue;
+      }),
 
       nota_final: newRaw2.map((v) => {
         const notaValue = getFieldWithValidation(v, ["nota final"]);
@@ -273,12 +420,14 @@ async function processRawFromDatabase() {
     "title",
     "tg",
     "proposta inicial",
+    "proposta",
+    "initial proposal",
     "autor",
     "author",
-    "aluno",
-    "aluna",
     "autora",
     "autoras",
+    "aluno",
+    "aluna",
     "alunos",
     "alunas",
     "curso",
@@ -312,10 +461,21 @@ async function processRawFromDatabase() {
     "nota final",
     "nota",
   ];
+  const camposVaziosRegex = new RegExp(
+    `^.*(${possibleFields.join("|")})\\s*:\\s*$`,
+    "gim"
+  );
 
   for (const record of allRecords) {
     let raw = record.raw;
     let semester = record.semester;
+
+    const camposVaziosRegex = new RegExp(
+      `^.*(${possibleFields.join("|")})\\s*:\\s*$`,
+      "gim"
+    );
+    raw = raw.replace(camposVaziosRegex, "");
+    raw = raw.replace(/^\s*\d+\.\s*$/gm, "");
 
     // Pré-processa o resumo para separar apresentação
     let apresentacaoText = null;
@@ -352,7 +512,7 @@ async function processRawFromDatabase() {
         return [cleanLine, ""];
       }
 
-      const split = cleanLine.split(/:(.+)/);
+      const split = cleanLine.split(/:(.+)/, 2);
       if (split.length > 1) {
         const fieldName = split[0].replace(/^\*+/, "").trim().toLowerCase();
         const value = split[1].trim();
@@ -378,18 +538,36 @@ async function processRawFromDatabase() {
     const fields = mapFieldsFromRaw([mappedLines], possibleFields);
 
     if (fields.titulo?.[0]) {
-      const regexTituloLinha = /^.*\d+\.\s*.*$/gim;
+      const regexTituloLinha = /^.*(t[ií]tulo|title)\s*:\s*.*$/gim;
       raw = raw.replace(regexTituloLinha, "");
+      raw = raw.replace(/^.*(t[ií]tulo|title)\s*:\s*$/gim, "");
+      raw = raw.replace(/^\s*\d+\.\s*.*$/gm, "");
     }
 
     if (fields.tg?.[0]) {
       const regexTGLinha =
-        /^.*(tg|trabalho de graduação|trabalho de graduaçao|trabalho de graduacao|tg final)\s*.*$/gim;
+        /^.*(tg|trabalho de graduação|trabalho de graduaçao|trabalho de graduacao|tg final)\s*:.*$/gim;
       raw = raw.replace(regexTGLinha, "");
     }
+    const regexTGVazio = /^.*\bTG\s*:\s*$/gim;
+    raw = raw.replace(regexTGVazio, "");
+
     if (fields.autor?.[0]) {
-      const regexAutorLinha =
-        /^.*(autor|author|aluno|aluna|autora|autoras|alunos|alunas|autor\(a\)|Autor\(a\))\s*:.*$/gim;
+      const regexAutorLinha = new RegExp(
+        [
+          /^.*autor(?:\(a\))?\s*:\s*.+$/,
+          /^\*+.*autor(?:\(a\))?\s*:\s*.+\*+$/,
+          /^.*author\s*:\s*.+$/,
+          /^.*aluno[as]?\s*:\s*.+$/,
+          /^.*aluna?\s*:\s*.+$/,
+          /^.*autoras?\s*:\s*.+$/,
+          /^_.*autor(?:\(a\))?\s*:\s*.+_$/,
+        ]
+          .map((r) => r.source)
+          .join("|"),
+        "gim"
+      );
+
       raw = raw.replace(regexAutorLinha, "");
     }
     if (fields.curso?.[0]) {
@@ -423,20 +601,34 @@ async function processRawFromDatabase() {
         "possíveis avaliadores",
         "avaliador",
         "avaliadora",
+        "avaliador(a)",
+        "avaliadora(a)",
+        "avaliador \\(a confirmar\\)",
+        "possíveis avaliadores(as)",
+        "avaliadores(as)",
       ];
       const regexAvaliadoresLinha = new RegExp(
         `^.*(${possibleStrings.join("|")})\\s*\\s*.*$`,
         "gim"
       );
       raw = raw.replace(regexAvaliadoresLinha, "");
+      raw = raw.replace(
+        /^.*(avaliadores|possíveis avaliadores|avaliador|avaliadora|avaliador\(a\)|avaliadora\(a\)|avaliador \(a confirmar\)|possíveis avaliadores\(as\)|avaliadores\(as\))\s*:\s*$/gim,
+        ""
+      );
     }
     if (fields.resumoDaProposta?.[0]) {
       const regexResumoLinha = /^.*resumo(?: da proposta)?\s*:\s*.*$/gim;
       raw = raw.replace(regexResumoLinha, "");
     }
     if (fields.propostaInicial?.[0]) {
-      const regexPropostaInicialLinha = /^.*proposta inicial\s*:\s*.*$/gim;
+      const regexPropostaInicialLinha =
+        /^.*(proposta(?:\s+inicial)?|initial proposal)\s*:\s*.*$/gim;
       raw = raw.replace(regexPropostaInicialLinha, "");
+      raw = raw.replace(
+        /^.*(proposta(?:\s+inicial)?|initial proposal)\s*:\s*$/gim,
+        ""
+      );
     }
     if (fields.palavrasChave?.[0]) {
       const regexPalavrasChaveLinha = /^.*palavras[- ]?chave\s*:\s*.*$/gim;
@@ -449,8 +641,12 @@ async function processRawFromDatabase() {
     }
     if (fields.banca?.[0]) {
       const regexBancaLinha =
-        /^.*(banca | banca examinadora | bancas | bancas examinadoras)\s*:.*$/gim;
+        /^.*(banca|banca examinadora|bancas|bancas examinadoras)\s*:\s*.*$/gim;
       raw = raw.replace(regexBancaLinha, "");
+      raw = raw.replace(
+        /^.*(banca|banca examinadora|bancas|bancas examinadoras)\s*:\s*$/gim,
+        ""
+      );
     }
     if (fields.date?.[0]) {
       const regexDateLinha = /^.*data\s*:\s*.*$/gim;
