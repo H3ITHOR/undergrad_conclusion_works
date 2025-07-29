@@ -298,12 +298,14 @@ async function execute(semester: string) {
       // Processa o raw para remover quebras de linha dos resumos
       let processedRaw = raw.join("\n");
 
-      // Identifica e processa seções de resumo
       processedRaw = processedRaw.replace(
-        /(resumo da proposta:|resumo:)([\s\S]*?)(?=\n\s*\*\*|$)/gi,
+        /(resumo da proposta:|resumo:)([\s\S]*?)(?=\n\s*(?:\*\*)?(?:apresenta[çc][ãa]o|banca|palavras[- ]?chave|nota final|área|data|hora\/local|\*\*[A-Z])|$)/gi,
         (match, label, content) => {
-          // Remove quebras de linha do conteúdo do resumo e substitui por espaços
-          const cleanContent = content.replace(/\n+/g, " ").trim();
+          // Remove quebras de linha APENAS do conteúdo do resumo
+          const cleanContent = content
+            .replace(/\n+/g, " ")
+            .replace(/\s{2,}/g, " ") // Remove espaços múltiplos
+            .trim();
           return `${label} ${cleanContent}`;
         }
       );
@@ -314,6 +316,7 @@ async function execute(semester: string) {
 
   const rawDataObject: ScrapedData[] = newData.map((v) => ({
     raw: v,
+    originalRaw: v,
     semester,
   }));
 

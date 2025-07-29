@@ -2,6 +2,53 @@ import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
 async function processRawFromDatabase() {
+  const extractNotaFinal = (str: string | null) => {
+    if (!str) return null;
+
+    const cleanStr = str
+      .replace(/\*+/g, "")
+      .replace(/<[^>]*>/g, "")
+      .trim();
+
+    if (
+      cleanStr.match(/^\?[,.]?\?$/) || // "?,?" ou "??"
+      cleanStr.match(/^-[,.]?-$/) || // "-,-" ou "--"
+      cleanStr.match(/^\?\s*$/) || // Só "?"
+      cleanStr.match(/^-\s*$/) || // Só "-"
+      cleanStr.toLowerCase().includes("faltou") // "FALTOU"
+    ) {
+      return null;
+    }
+
+    const patterns = [
+      /nota final[:\s]*([\d.,]+)/i, // "Nota final: 8,5"
+      /\*\*nota final[:\s]*([\d.,]+)\*\*/i, // "**Nota final: 8,5**"
+      /nota final[:\s]*([\d.,]+)\s*\(/i, // "Nota final: 8,5 ([detalhamento"
+      /^([\d.,]+)\s*\(/, // "8,5 ([detalhamento..." no início
+      /:\s*([\d.,]+)$/, // ": 8,5" no final
+      /^\s*([\d.,]+)\s*$/, // Só o número
+      /final[:\s]*([\d.,]+)/i, // "final: 8,5"
+      /([\d.,]+)\s*\([^)]*detalhamento[^)]*\)/i, // "8,5 ([detalhamento...])"
+    ];
+
+    for (const pattern of patterns) {
+      const match = cleanStr.match(pattern);
+      if (match && match[1]) {
+        const nota = match[1].replace(",", ".").trim();
+
+        if (nota.match(/^\?[,.]?\?$/) || nota.match(/^-[,.]?-$/)) {
+          return null;
+        }
+
+        const numero = parseFloat(nota);
+        if (!isNaN(numero) && numero >= 0 && numero <= 10) {
+          return nota;
+        }
+      }
+    }
+
+    return null;
+  };
   function mapFieldsFromRaw(newRaw2: any[], possibleFields: string[]) {
     const getFieldByName = (item: any[], fieldName: string) => {
       const fieldEntry = item.find((entry) => {
@@ -54,12 +101,6 @@ async function processRawFromDatabase() {
       const matches = [...str.matchAll(/https?:\/\/[^\s)\]]+/g)];
       if (matches.length === 0) return null;
       return matches.map((m) => m[0]).join(" ");
-    };
-
-    const extractNotaFinal = (str: string | null) => {
-      if (!str) return null;
-      const match = str.match(/\s*([\d.,]+)/i);
-      return match ? match[1].replace(",", ".").trim() : null;
     };
 
     return {
@@ -354,13 +395,66 @@ async function processRawFromDatabase() {
         for (let i = resumoIndex; i < v.length; i++) {
           const entry = v[i];
           const fieldName = entry?.[0]?.toLowerCase().replace(/\*/g, "").trim();
+
+          // Campos que indicam fim do resumo (mais específicos)
+          const endFields = [
+            "apresentação",
+            "apresentacao",
+            "defesa",
+            "nota final",
+            "palavras-chave",
+            "palavras chave",
+            "key words",
+            "banca",
+            "data",
+            "hora/local",
+            "área",
+            "area",
+          ];
+
+          if (i === resumoIndex) {
+            if (entry[1]) {
+              resumoLines.push(entry[1]);
+            }
+            continue;
+          }
+
+          const isEndField = endFields.some(
+            (field) => fieldName && fieldName.includes(field.toLowerCase())
+          );
+
           const isNewField = possibleFields.some(
             (field) => fieldName && fieldName === field.toLowerCase()
           );
-          if (i !== resumoIndex && isNewField) break;
-          resumoLines.push(entry?.[1] || entry?.[0] || "");
+
+          if (isEndField || isNewField) break;
+
+          if (
+            entry[0] &&
+            entry[0].toLowerCase().match(/^apresenta[çc][ãa]o\s*:/)
+          ) {
+            break;
+          }
+
+          if (entry[0] && entry[0].toLowerCase().includes("nota final")) {
+            break;
+          }
+
+          const content = entry?.[1] || entry?.[0] || "";
+          if (content && content.trim() !== "") {
+            resumoLines.push(content);
+          }
         }
-        return resumoLines.join(" ").replace(/\n+/g, " ").trim();
+
+        let resumoText = resumoLines.join(" ").replace(/\n+/g, " ").trim();
+
+        resumoText = resumoText
+          .replace(/apresenta[çc][ãa]o\s*:.*$/i, "") // Remove apresentação e tudo após
+          .replace(/nota final\s*:.*$/i, "") // Remove nota final e tudo após
+          .replace(/palavras[- ]chave\s*:.*$/i, "") // Remove palavras-chave e tudo após
+          .trim();
+
+        return resumoText || null;
       }),
 
       palavrasChave: newRaw2.map((v) =>
@@ -380,7 +474,6 @@ async function processRawFromDatabase() {
       area: newRaw2.map((v) => {
         const areaValue = getFieldWithValidation(v, ["area", "área"]);
 
-        // Se não encontrou, busca por padrões comuns de área
         if (!areaValue) {
           for (const entry of v) {
             if (!entry?.[0]) continue;
@@ -405,7 +498,71 @@ async function processRawFromDatabase() {
 
       nota_final: newRaw2.map((v) => {
         const notaValue = getFieldWithValidation(v, ["nota final"]);
-        return extractNotaFinal(notaValue);
+        if (notaValue) {
+          return extractNotaFinal(notaValue);
+        }
+
+        const rawText = v
+          .map((entry) => (entry[0] || "") + " " + (entry[1] || ""))
+          .join(" ");
+
+        const notaPatterns = [
+          /nota final[:\s]*([\d.,]+)\s*\([^)]*detalhamento[^)]*\)/gi, // "Nota final: 8,0 ([detalhamento])"
+          /\*\*\*nota final[:\s]*([\d.,]+)\s*\([^)]*detalhamento[^)]*\)\*\*\*/gi, // ***Nota final: 8,0 ([detalhamento])***
+          /\*\*nota final[:\s]*([\d.,]+)\s*\([^)]*detalhamento[^)]*\)\*\*/gi, // **Nota final: 8,0 ([detalhamento])**
+          /nota final[:\s]*([\d.,]+)\s*\(/gi, // "Nota final: 8,0 ("
+          /\*\*nota final[:\s]*([\d.,]+)\*\*/gi, // **Nota final: 8,0**
+          /\*\*\*nota final[:\s]*([\d.,]+)\*\*\*/gi, // ***Nota final: 8,0***
+          /nota final[:\s]*([\d.,]+)/gi, // "Nota final: 8,0"
+          /([\d.,]+)\s*\(\[detalhamento\]/gi, // "8,0 ([detalhamento"
+          /^([\d.,]+)\s*\([^)]*detalhamento[^)]*\)/gim, // "8,0 ([detalhamento...])" no início da linha
+        ];
+
+        for (const pattern of notaPatterns) {
+          const matches = [...rawText.matchAll(pattern)];
+          if (matches.length > 0) {
+            // Pega a última ocorrência (mais provável de ser a nota final)
+            const lastMatch = matches[matches.length - 1];
+            if (lastMatch[1]) {
+              const nota = lastMatch[1].replace(",", ".").trim();
+              const numero = parseFloat(nota);
+              if (!isNaN(numero) && numero >= 0 && numero <= 10) {
+                return nota;
+              }
+            }
+          }
+        }
+
+        if (
+          rawText.match(/nota final[:\s]*faltou/i) ||
+          rawText.match(/nota final[:\s]*\?[,.]?\?/i) ||
+          rawText.match(/nota final[:\s]*-[,.]?-/i) ||
+          rawText.match(/nota final[:\s]*\\-[,.]?-/i) ||
+          rawText.match(/nota final[:\s]*\?\s*$/i) ||
+          rawText.match(/nota final[:\s]*-\s*$/i)
+        ) {
+          return null;
+        }
+
+        if (
+          rawText.match(/nota final[:\s]*-[,.]?-/i) ||
+          rawText.match(/nota final[:\s]*\\-[,.]?-/i)
+        ) {
+          return null; // Não definido
+        }
+
+        const genericMatch = rawText.match(
+          /([\d.,]+)\s*\([^)]*detalhamento[^)]*\)/i
+        );
+        if (genericMatch) {
+          const nota = genericMatch[1].replace(",", ".").trim();
+          const numero = parseFloat(nota);
+          if (!isNaN(numero) && numero >= 0 && numero <= 10) {
+            return nota;
+          }
+        }
+
+        return null;
       }),
     };
   }
@@ -454,6 +611,7 @@ async function processRawFromDatabase() {
     "apresentacao",
     "defesa",
     "banca",
+    "banca examinadora",
     "data",
     "hora/local",
     "área",
@@ -522,7 +680,6 @@ async function processRawFromDatabase() {
       return [cleanLine.toLowerCase(), ""];
     });
 
-    // Adiciona apresentação como campo mapeado
     if (apresentacaoText) {
       mappedLines.push(["apresentação", apresentacaoText]);
     }
@@ -661,8 +818,33 @@ async function processRawFromDatabase() {
       raw = raw.replace(regexAreaLinha, "");
     }
     if (fields.nota_final?.[0]) {
-      const regexNotaFinalLinha = /^.*nota final\s*:\s*.*$/gim;
-      raw = raw.replace(regexNotaFinalLinha, "");
+      // Verifica se a nota final é válida
+      const notaFinalValidada = extractNotaFinal(fields.nota_final[0]);
+
+      if (notaFinalValidada === null) {
+        // Se a nota não é válida, remove ela do raw
+        const regexNotaFinalInvalida =
+          /^.*nota final\s*:\s*[\?\-,\.]*[\?\-]*.*$/gim;
+        raw = raw.replace(regexNotaFinalInvalida, "");
+
+        // Remove linhas que contêm apenas símbolos inválidos para nota
+        raw = raw.replace(
+          /^.*[\?\-,\.]+\s*\([^)]*detalhamento[^)]*\).*$/gim,
+          ""
+        );
+
+        // Remove linhas vazias resultantes
+        raw = raw.replace(/^\s*$/gm, "");
+      } else {
+        // Se é válida, remove apenas a linha da nota final normal
+        const regexNotaFinalLinha = /^.*nota final\s*:\s*.*$/gim;
+        raw = raw.replace(regexNotaFinalLinha, "");
+      }
+    } else {
+      const regexNotaFinalInvalida =
+        /^.*nota final\s*:\s*[\?\-,\.]*[\?\-]*.*$/gim;
+      raw = raw.replace(regexNotaFinalInvalida, "");
+      raw = raw.replace(/^.*[\?\-,\.]+\s*\([^)]*detalhamento[^)]*\).*$/gim, "");
     }
 
     raw = raw.trim() === "" ? null : raw.trim();
@@ -674,44 +856,69 @@ async function processRawFromDatabase() {
       local = null;
 
     if (apresentacaoValue) {
-      // Normaliza para facilitar o parsing
-      const value = apresentacaoValue
+      let value = apresentacaoValue
         .replace(/\s+/g, " ")
         .replace(/[\*]+/g, "")
         .trim();
 
-      // Dia: busca por dd/mm/yyyy ou dd/mm/yy
-      const dayMatch = value.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
-      day = dayMatch ? dayMatch[1] : null;
+      value = value.replace(/nota final[:\s]*[\d.,]+\s*\([^)]*\)/gi, "");
 
-      // Hora: busca por hh:mm, hh:mmhs, hhhs, etc
+      const dayMatch = value.match(
+        /dia[:\s]*(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{1,2}\/\d{1,2}\/\d{2,4})/i
+      );
+      day = dayMatch ? dayMatch[1] || dayMatch[2] : null;
+
       const hourMatch =
-        value.match(/(\d{1,2}:\d{2}(?:h)?(?:s)?)/) ||
-        value.match(/(\d{1,2}h(?:s)?)/);
+        value.match(
+          /hora[:\s]*(\d{1,2}:\d{2}(?:h)?(?:s)?(?:\s*às\s*\d{1,2}:\d{2}(?:h)?(?:s)?)?)/i
+        ) ||
+        value.match(
+          /(\d{1,2}:\d{2}(?:h)?(?:s)?(?:\s*às\s*\d{1,2}:\d{2}(?:h)?(?:s)?)?)/i
+        ) ||
+        value.match(/(\d{1,2}h(?:\d{2})?(?:s)?)/i);
       hour = hourMatch ? hourMatch[1] : null;
 
-      // Local: normalmente após a última vírgula ou após "local:"
-      const localMatch = value.match(/local[:\s]*([^\n,]+)/i);
+      const localMatch =
+        value.match(/local[:\s]*([^,\n]+?)(?:\s*$|,|nota final)/i) ||
+        value.match(
+          /((?:sala|auditório|anfiteatro)[:\s]*[^,\n]+?)(?:\s*$|,|nota final)/i
+        ) ||
+        value.match(/(sala\s+[A-Z0-9]+[^,\n]*?)(?:\s*$|,|nota final)/i) ||
+        value.match(/(auditório\s+[^,\n]+?)(?:\s*$|,|nota final)/i) ||
+        value.match(/(anfiteatro\s+[^,\n]+?)(?:\s*$|,|nota final)/i) ||
+        value.match(/(google\s+meet[^,\n]*?)(?:\s*$|,|nota final)/i);
+
       if (localMatch) {
         local = localMatch[1].trim();
       } else {
-        // Se não tiver "local:", pega o último trecho após vírgula
-        const parts = value.split(",");
-        if (parts.length > 1) {
-          local = parts[parts.length - 1].trim();
-          // Remove possíveis textos irrelevantes
+        const parts = value.split(",").map((p) => p.trim());
+        if (parts.length > 2) {
+          const lastPart = parts[parts.length - 1];
           if (
-            local.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) ||
-            local.match(/\d{1,2}:\d{2}/) ||
-            local.match(/\d{1,2}h/)
+            !lastPart.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) &&
+            !lastPart.match(/\d{1,2}:\d{2}/) &&
+            !lastPart.match(/\d{1,2}h/) &&
+            !lastPart.match(/nota final/i) &&
+            !lastPart.match(/detalhamento/i) &&
+            lastPart.length > 3 &&
+            lastPart.length < 100
           ) {
-            local = null;
+            local = lastPart;
           }
+        }
+      }
+      if (local) {
+        local = local
+          .replace(/\([^)]*detalhamento[^)]*\)/gi, "")
+          .replace(/nota final.*/gi, "")
+          .trim();
+
+        if (!local || local.length < 3) {
+          local = null;
         }
       }
     }
 
-    // Atualiza o registro no banco
     await dataRepo.update(record.id, {
       title: record.title ? record.title : fields.titulo?.[0] || null,
       tg: record.tg ? record.tg : fields.tg?.[0] || null,

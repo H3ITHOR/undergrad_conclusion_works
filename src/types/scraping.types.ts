@@ -1,5 +1,6 @@
 export interface ScrapedData {
   id?: number;
+  originalRaw?: string;
   raw?: string;
   title?: string;
   tg?: string;
