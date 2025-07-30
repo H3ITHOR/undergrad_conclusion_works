@@ -191,23 +191,100 @@ async function processRawFromDatabase() {
       }),
 
       tg: newRaw2.map((v) => {
+        // 1. Busca campo específico de TG primeiro
         const tgValue = getFieldWithValidation(v, [
           "tg",
           "trabalho de graduaçao",
           "trabalho de graduação",
           "trabalho de graduacao",
         ]);
+
+        if (tgValue) {
+          const links = extractAllLinks(tgValue);
+          if (links) return links;
+          return tgValue;
+        }
+
+        // 2. Busca na primeira linha numerada (formato "1. Título")
         const firstEntry = v.find(
           (entry) => entry?.[0] && entry[0].match(/^\d+\.\s*/)
         );
+
         if (firstEntry) {
-          const linkMatch = firstEntry[0].match(/\((https?:\/\/[^\s]*)$/);
-          if (linkMatch) return linkMatch[1].trim();
+          const fullLine = firstEntry[0];
+
+          // Padrões para extrair TG da linha com título (expandidos para todos os formatos e case-insensitive)
+          const tgPatterns = [
+            // TG explícito
+            /tg\s*:\s*(https?:\/\/[^\s)\]]+)/i,
+            // Link que contém "/tg/" mas não "proposta"
+            /\((https?:\/\/[^\s)]*\/tg\/[^\s)]*(?<!proposta\.(?:pdf|doc|docx|zip|rar|ps))[^\s)]*)\)$/i,
+            // TG no final da linha entre parênteses (qualquer arquivo, não proposta) - case insensitive
+            /\((https?:\/\/[^\s)]*(?:\/tg\/|\.(?:pdf|doc|docx|zip|rar|ps|part\d+\.rar))(?!.*proposta)[^\s)]*)\)$/i,
+            // Link de arquivo que não é proposta no final - case insensitive
+            /\((https?:\/\/[^\s)]*\.(?:pdf|doc|docx|zip|rar|ps|part\d+\.rar)(?!.*proposta)[^\s)]*)\)$/i,
+            // Casos específicos como "part1.rar"
+            /\((https?:\/\/[^\s)]*\.part\d+\.rar[^\s)]*)\)$/i,
+            // Arquivos .ps.gz
+            /\((https?:\/\/[^\s)]*\.ps\.gz(?!.*proposta)[^\s)]*)\)$/i,
+          ];
+
+          for (const pattern of tgPatterns) {
+            const match = fullLine.match(pattern);
+            if (match) {
+              const link = match[1].trim();
+              if (!link.toLowerCase().includes("proposta")) {
+                return link;
+              }
+            }
+          }
+
+          // Se não encontrou link específico, busca qualquer link que não seja proposta
+          const allLinksInTitle = [
+            ...fullLine.matchAll(/\((https?:\/\/[^\s)]+)\)/g),
+          ];
+          for (const linkMatch of allLinksInTitle) {
+            const link = linkMatch[1];
+            const linkLower = link.toLowerCase();
+            if (
+              !linkLower.includes("proposta") &&
+              (linkLower.includes("/tg/") ||
+                linkLower.match(
+                  /\.(?:pdf|doc|docx|zip|rar|ps|part\d+\.rar)(?:\.gz)?$/
+                ))
+            ) {
+              return link;
+            }
+          }
         }
-        return tgValue || getFieldWithValidation(v, ["tg"]);
+
+        // 3. Busca em qualquer campo que contenha links de TG
+        for (const entry of v) {
+          if (!entry?.[0] && !entry?.[1]) continue;
+
+          const text = (entry[1] || entry[0] || "").toString();
+          const linkMatch = text.match(/https?:\/\/[^\s)\]]+/);
+
+          if (linkMatch) {
+            const link = linkMatch[0];
+            const linkLower = link.toLowerCase();
+            if (
+              !linkLower.includes("proposta") &&
+              (linkLower.includes("/tg/") ||
+                linkLower.match(
+                  /\.(?:pdf|doc|docx|zip|rar|ps|part\d+\.rar)(?:\.gz)?$/
+                ))
+            ) {
+              return link;
+            }
+          }
+        }
+
+        return null;
       }),
 
       propostaInicial: newRaw2.map((v) => {
+        // 1. Busca campo específico primeiro
         let propostaValue = getFieldWithValidation(v, [
           "proposta inicial",
           "proposta",
@@ -216,25 +293,118 @@ async function processRawFromDatabase() {
           "proposta de trabalho",
         ]);
 
-        if (!propostaValue) {
-          for (const entry of v) {
-            if (!entry?.[0] && !entry?.[1]) continue;
-            const text = (entry[1] || entry[0] || "").toString();
-            const linkMatch = text.match(/https?:\/\/[^\s)\]]+/);
-            if (linkMatch) return linkMatch[0];
-          }
-          return null;
+        if (propostaValue) {
+          const links = extractAllLinks(propostaValue);
+          if (links) return links;
+          return propostaValue
+            .replace(/proposta\s*(?:inicial)?\s*:\s*/gi, "")
+            .trim();
         }
 
-        const links = extractAllLinks(propostaValue);
-        if (links) return links;
+        // 2. Busca na primeira linha numerada (junto com título)
+        const firstEntry = v.find(
+          (entry) => entry?.[0] && entry[0].match(/^\d+\.\s*/)
+        );
 
-        return propostaValue
-          .replace(/proposta\s*(?:inicial)?\s*:\s*/gi, "")
-          .replace(/\[.*?\]/g, "")
-          .trim();
+        if (firstEntry) {
+          const fullLine = firstEntry[0];
+
+          // Padrões para extrair proposta da linha com título (expandidos e case-insensitive)
+          const propostaPatterns = [
+            // Proposta explícita
+            /proposta\s*(?:inicial)?\s*:\s*(https?:\/\/[^\s)\]]+)/i,
+            // Texto "(Proposta inicial: link)"
+            /\(proposta\s+inicial:\s*(https?:\/\/[^\s)]+)\)/i,
+            // Link que contém "proposta" (qualquer formato) - case insensitive
+            /\((https?:\/\/[^\s)]*proposta[^\s)]*\.(?:pdf|doc|docx|zip|rar|ps)(?:\.gz)?[^\s)]*)\)/i,
+            // Link que contém "proposta" (sem extensão específica)
+            /\((https?:\/\/[^\s)]*proposta[^\s)]*)\)/i,
+          ];
+
+          for (const pattern of propostaPatterns) {
+            const match = fullLine.match(pattern);
+            if (match) {
+              const link = match[1].trim();
+              return link;
+            }
+          }
+
+          // Busca padrão específico: "aqui" seguido de link de proposta
+          const aquiMatch = fullLine.match(
+            /\[aqui\]\((https?:\/\/[^\s)]*proposta[^\s)]*)\)/i
+          );
+          if (aquiMatch) {
+            return aquiMatch[1];
+          }
+        }
+
+        // 3. Busca em qualquer linha por padrões de proposta
+        for (const entry of v) {
+          if (!entry?.[0] && !entry?.[1]) continue;
+
+          const fullText = (entry[0] || "") + " " + (entry[1] || "");
+
+          // Padrões mais específicos (expandidos para todos os formatos e case-insensitive)
+          const propostaPatterns = [
+            /proposta\s+inicial[:\s]*[^(]*\(([^)]*proposta[^)]*\.(?:pdf|doc|docx|zip|rar|ps)(?:\.gz)?[^)]*)\)/gi,
+            /proposta[:\s]*[^(]*\(([^)]*proposta[^)]*\.(?:pdf|doc|docx|zip|rar|ps)(?:\.gz)?[^)]*)\)/gi,
+            /initial\s+proposal[:\s]*[^(]*\(([^)]*proposta[^)]*\.(?:pdf|doc|docx|zip|rar|ps)(?:\.gz)?[^)]*)\)/gi,
+            /\(proposta\s+inicial[:\s]*([^)]*\.(?:pdf|doc|docx|zip|rar|ps)(?:\.gz)?[^)]*)\)/gi,
+            // Padrão "aqui" com link de proposta
+            /\[aqui\]\(([^)]*proposta[^)]*)\)/gi,
+            // Padrão genérico para proposta (qualquer formato)
+            /proposta[^(]*\(([^)]*proposta[^)]*)\)/gi,
+          ];
+
+          for (const pattern of propostaPatterns) {
+            const match = fullText.match(pattern);
+            if (match && match[1]) {
+              const link = match[1].trim();
+              if (
+                link.toLowerCase().includes("proposta") ||
+                link.startsWith("http")
+              ) {
+                return link;
+              }
+            }
+          }
+
+          // Busca texto que menciona proposta com link
+          const text = (entry[1] || entry[0] || "").toString().toLowerCase();
+          if (
+            text.includes("proposta inicial") ||
+            text.includes("initial proposal")
+          ) {
+            const originalText = (entry[1] || entry[0] || "").toString();
+            const linkMatch = originalText.match(/https?:\/\/[^\s)\]]+/);
+            if (linkMatch) {
+              const link = linkMatch[0];
+              if (link.toLowerCase().includes("proposta")) {
+                return link;
+              }
+            }
+          }
+        }
+
+        // 4. Último recurso: busca por qualquer link que claramente é de proposta
+        for (const entry of v) {
+          if (!entry?.[0] && !entry?.[1]) continue;
+
+          const text = (entry[1] || entry[0] || "").toString();
+          const linkMatch = text.match(/https?:\/\/[^\s)\]]+/);
+
+          if (linkMatch) {
+            const link = linkMatch[0];
+            const linkLower = link.toLowerCase();
+            // Só considera se o link claramente é de proposta
+            if (linkLower.includes("proposta") && !linkLower.includes("/tg/")) {
+              return link;
+            }
+          }
+        }
+
+        return null;
       }),
-
       course: newRaw2.map((v) => {
         const courseValue = getFieldWithValidation(v, [
           "curso",
@@ -474,6 +644,7 @@ async function processRawFromDatabase() {
 
         resumoText = resumoText
           .replace(/apresenta[çc][ãa]o\s*:.*$/i, "") // Remove apresentação e tudo após
+          .replace(/defesa\s*:.*$/i, "") // Remove defesa e tudo após
           .replace(/nota final\s*:.*$/i, "") // Remove nota final e tudo após
           .replace(/palavras[- ]chave\s*:.*$/i, "") // Remove palavras-chave e tudo após
           .trim();
@@ -665,6 +836,7 @@ async function processRawFromDatabase() {
 
     // Pré-processa o resumo para separar apresentação
     let apresentacaoText = null;
+    let defesaText = null;
     let resumoText = raw.trim();
 
     // Regex para encontrar apresentação dentro do resumo
@@ -674,6 +846,18 @@ async function processRawFromDatabase() {
     if (apresentacaoMatch) {
       apresentacaoText = apresentacaoMatch[1].trim();
       // Remove apresentação do resumo
+    }
+
+    // Regex para encontrar defesa dentro do resumo
+    const defesaRegex = /(defesa\s*:\s*.+)$/im;
+    const defesaMatch = raw.match(defesaRegex);
+
+    if (defesaMatch) {
+      defesaText = defesaMatch[1].trim();
+      // Remove defesa do resumo se não foi capturada como apresentação
+      if (!apresentacaoText) {
+        resumoText = resumoText.replace(defesaRegex, "").trim();
+      }
     }
 
     // Agora, use resumoText para split das linhas
@@ -710,6 +894,10 @@ async function processRawFromDatabase() {
 
     if (apresentacaoText) {
       mappedLines.push(["apresentação", apresentacaoText]);
+    }
+
+    if (defesaText && defesaText !== apresentacaoText) {
+      mappedLines.push(["defesa", defesaText]);
     }
 
     const notaFinalRegex = /nota final\s*:\s*([\d.,]+)/i;
