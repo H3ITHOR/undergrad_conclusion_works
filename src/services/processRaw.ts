@@ -396,6 +396,24 @@ async function processRawFromDatabase() {
           const entry = v[i];
           const fieldName = entry?.[0]?.toLowerCase().replace(/\*/g, "").trim();
 
+          const isRealField = (text, fieldList) => {
+            if (!text) return false;
+
+            return fieldList.some((field) => {
+              // Verifica se é exatamente o campo seguido de ":"
+              const exactMatch = text.match(new RegExp(`^${field}\\s*:`, "i"));
+              if (exactMatch) return true;
+
+              // Verifica se a linha inteira é só o campo (sem conteúdo)
+              const fieldOnlyMatch = text.match(
+                new RegExp(`^${field}\\s*$`, "i")
+              );
+              if (fieldOnlyMatch) return true;
+
+              return false;
+            });
+          };
+
           // Campos que indicam fim do resumo (mais específicos)
           const endFields = [
             "apresentação",
@@ -419,13 +437,19 @@ async function processRawFromDatabase() {
             continue;
           }
 
-          const isEndField = endFields.some(
-            (field) => fieldName && fieldName.includes(field.toLowerCase())
-          );
+          const isEndField =
+            isRealField(fieldName, endFields) ||
+            isRealField(entry?.[0], endFields);
 
-          const isNewField = possibleFields.some(
-            (field) => fieldName && fieldName === field.toLowerCase()
-          );
+          const isNewField = possibleFields.some((field) => {
+            if (!fieldName) return false;
+            // Só considera novo campo se tiver ":" ou for exatamente o campo
+            return (
+              fieldName === field.toLowerCase() &&
+              (entry?.[0]?.includes(":") ||
+                fieldName === entry?.[0]?.toLowerCase().trim())
+            );
+          });
 
           if (isEndField || isNewField) break;
 
@@ -469,7 +493,11 @@ async function processRawFromDatabase() {
 
       date: newRaw2.map((v) => getFieldWithValidation(v, ["data"])),
 
-      horaLocal: newRaw2.map((v) => getFieldWithValidation(v, ["hora/local"])),
+      horaLocal: newRaw2.map((v) =>
+        getFieldWithValidation(v, ["hora/local", "local"])
+      ),
+
+      local: newRaw2.map((v) => getFieldWithValidation(v, ["local", "Local"])),
 
       area: newRaw2.map((v) => {
         const areaValue = getFieldWithValidation(v, ["area", "área"]);
@@ -847,6 +875,26 @@ async function processRawFromDatabase() {
       raw = raw.replace(/^.*[\?\-,\.]+\s*\([^)]*detalhamento[^)]*\).*$/gim, "");
     }
 
+    if (fields.local?.[0]) {
+      const regexLocalLinha =
+        /^.*(local|Local|sala|Sala|auditório|auditorio|anfiteatro|google meet|meet)\s*:\s*.*$/gim;
+      raw = raw.replace(regexLocalLinha, "");
+
+      raw = raw.replace(/^.*(local|Local)\s*:\s*$/gim, "");
+
+      raw = raw.replace(/^.*sala\s+[A-Z0-9]+.*$/gim, "");
+      raw = raw.replace(/^.*auditório.*$/gim, "");
+      raw = raw.replace(/^.*anfiteatro.*$/gim, "");
+      raw = raw.replace(/^.*google\s+meet.*$/gim, "");
+      raw = raw.replace(/^.*pitch.*$/gim, "");
+      raw = raw.replace(/^.*online.*$/gim, "");
+      raw = raw.replace(/^.*virtual.*$/gim, "");
+      raw = raw.replace(/^.*remoto.*$/gim, "");
+
+      raw = raw.replace(/^[A-Z]\d{3}$/gm, "");
+      raw = raw.replace(/^[A-Z]-\d{3}$/gm, "");
+    }
+
     raw = raw.trim() === "" ? null : raw.trim();
 
     const apresentacaoValue =
@@ -854,6 +902,21 @@ async function processRawFromDatabase() {
     let day = null,
       hour = null,
       local = null;
+
+    const localFromField = fields.local?.[0];
+    if (localFromField) {
+      local = localFromField
+        .replace(/local[:\s]*/i, "")
+        .replace(/\([^)]*detalhamento[^)]*\)/gi, "")
+        .replace(/nota final.*/gi, "")
+        .trim();
+
+      if (local && local.length >= 3) {
+        console.log("Local encontrado em campo dedicado:", local);
+      } else {
+        local = null;
+      }
+    }
 
     if (apresentacaoValue) {
       let value = apresentacaoValue
@@ -886,10 +949,29 @@ async function processRawFromDatabase() {
         value.match(/(sala\s+[A-Z0-9]+[^,\n]*?)(?:\s*$|,|nota final)/i) ||
         value.match(/(auditório\s+[^,\n]+?)(?:\s*$|,|nota final)/i) ||
         value.match(/(anfiteatro\s+[^,\n]+?)(?:\s*$|,|nota final)/i) ||
-        value.match(/(google\s+meet[^,\n]*?)(?:\s*$|,|nota final)/i);
+        value.match(
+          /((?:via\s+)?google\s+meet[^,\n]*?)(?:\s*$|,|nota final)/i
+        ) || // "via Google Meet" ou "Google Meet"
+        value.match(
+          /((?:através\s+do\s+)?google\s+meet[^,\n]*?)(?:\s*$|,|nota final)/i
+        ) || // "através do Google Meet"
+        value.match(
+          /((?:por\s+)?google\s+meet[^,\n]*?)(?:\s*$|,|nota final)/i
+        ) || // "por Google Meet"
+        value.match(
+          /((?:pelo\s+)?google\s+meet[^,\n]*?)(?:\s*$|,|nota final)/i
+        ) || // "pelo Google Meet"
+        value.match(/(meet\s+google[^,\n]*?)(?:\s*$|,|nota final)/i) || // "Meet Google" (ordem invertida)
+        value.match(/(online[^,\n]*?)(?:\s*$|,|nota final)/i) || // "online"
+        value.match(/(virtual[^,\n]*?)(?:\s*$|,|nota final)/i) || // "virtual"
+        value.match(/(remoto[^,\n]*?)(?:\s*$|,|nota final)/i); // "remoto"
 
+      console.log("value: ", value);
       if (localMatch) {
         local = localMatch[1].trim();
+        // if (record?.author.startsWith("Saulo Alexandre")) {
+        //   console.log("Local para Saulo Alexandre Barros:", local);
+        // }
       } else {
         const parts = value.split(",").map((p) => p.trim());
         if (parts.length > 2) {
@@ -918,6 +1000,10 @@ async function processRawFromDatabase() {
         }
       }
     }
+
+    if (fields.local) console.log("record.author: " + record.author);
+    console.log("fields.autor: ", fields.autor);
+    console.log("local: ", local);
 
     await dataRepo.update(record.id, {
       title: record.title ? record.title : fields.titulo?.[0] || null,
