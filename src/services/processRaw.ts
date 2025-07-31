@@ -2,6 +2,38 @@ import { DataRepository } from "../repositories/scrapingRepository";
 import { ScrapedData } from "../types/scraping.types";
 
 async function processRawFromDatabase() {
+  function extractOthersField(lines: string[]): string | null {
+    const results: string[] = [];
+    for (const line of lines) {
+      const regexBracketCase =
+        /\[(Manual do Usu[aá]rio|Caso de Estudo):[^\]]*\]\((https?:\/\/[^\s)]+)\)/gi;
+      let match;
+      while ((match = regexBracketCase.exec(line)) !== null) {
+        results.push(match[2]);
+      }
+      const regexBracket =
+        /(Manual do Usu[aá]rio|Caso de Estudo)[^\[]*\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
+      while ((match = regexBracket.exec(line)) !== null) {
+        results.push(match[3]);
+      }
+      const regexColon =
+        /(Manual do Usu[aá]rio|Caso de Estudo)\s*:\s*(https?:\/\/[^\s)]+)/gi;
+      while ((match = regexColon.exec(line)) !== null) {
+        results.push(match[2]);
+      }
+      const regexParen =
+        /(Manual do Usu[aá]rio|Caso de Estudo)[^\(]*\((https?:\/\/[^\s)]+)\)/gi;
+      while ((match = regexParen.exec(line)) !== null) {
+        results.push(match[2]);
+      }
+      const regexColonBracket =
+        /(Manual do Usu[aá]rio|Caso de Estudo)\s*:\s*\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
+      while ((match = regexColonBracket.exec(line)) !== null) {
+        results.push(match[3]);
+      }
+    }
+    return results.length > 0 ? results.join(" ") : null;
+  }
   const extractNotaFinal = (str: string | null) => {
     if (!str) return null;
 
@@ -1189,6 +1221,8 @@ async function processRawFromDatabase() {
       }
     }
 
+    const others = extractOthersField(lines);
+
     if (fields.local) console.log("record.author: " + record.author);
     console.log("fields.autor: ", fields.autor);
     console.log("local: ", local);
@@ -1215,6 +1249,7 @@ async function processRawFromDatabase() {
       hour: record.hour || hour,
       local: record.local || local,
       final_score: record.final_score || fields.nota_final?.[0] || null,
+      others: record.others || others || null,
       raw,
     });
   }
