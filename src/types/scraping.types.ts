@@ -19,6 +19,7 @@ export interface ScrapedData {
   semester?: string;
   area?: string;
   final_score?: string;
+  others?: string;
 }
 
 export interface ScrapingOptions {

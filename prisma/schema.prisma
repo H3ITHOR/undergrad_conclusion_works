@@ -28,4 +28,5 @@ model data {
   semester           String?
   area               String?
   final_score        String?
+  others             String?
 }
